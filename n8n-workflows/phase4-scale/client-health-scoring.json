@@ -1,0 +1,92 @@
+{
+  "name": "client-health-scoring",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 18 * * 0" }] }
+      },
+      "id": "weekly-trigger",
+      "name": "Sunday 6:00 PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "filters": { "conditions": [{ "lookupColumn": "Status", "lookupValue": "Active" }] }
+      },
+      "id": "get-clients",
+      "name": "Get Active Clients",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [470, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// For each client, gather health metrics from ClickUp\n// This is a simplified version — in production, you'd pull from multiple sources\nconst clients = $input.all().map(i => i.json);\nconst results = [];\n\nfor (const client of clients) {\n  results.push({\n    json: {\n      client_name: client['Client Name'],\n      clickup_space_id: client['ClickUp Space ID'],\n      meeting_day: client['Meeting Day'],\n      // These would be calculated from actual data in production:\n      // For now, they're placeholders that you'd populate from ClickUp/Calendar/Gmail APIs\n      meetings_held: 'PULL_FROM_CALENDAR',\n      meetings_scheduled: 'PULL_FROM_CALENDAR',\n      avg_response_time: 'CALCULATE_FROM_GMAIL',\n      tasks_on_time: 'PULL_FROM_CLICKUP',\n      tasks_total: 'PULL_FROM_CLICKUP',\n      client_blocked_count: 'PULL_FROM_CLICKUP',\n      days_since_interaction: 'CALCULATE',\n      waiting_items_count: 'PULL_FROM_CLICKUP',\n      waiting_items_avg_age: 'CALCULATE',\n      accepted: 'TRACK',\n      delivered: 'TRACK',\n      engagement_level: 'ASSESS_QUALITATIVELY',\n      stakeholder_changes: 'TRACK',\n      scope_discussions: 'TRACK',\n      payment_status: 'CHECK_INVOICING',\n      client_config: client\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "gather-metrics",
+      "name": "Gather Health Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300],
+      "notes": "In production: add HTTP Request nodes to pull actual data from ClickUp, Google Calendar, and Gmail APIs. This code node then aggregates the results."
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" },
+        "fields": {
+          "values": [
+            { "name": "system_prompt", "value": "You are a client success analyst for a RevOps consulting practice. You evaluate client engagement health based on quantitative signals and provide early warning when relationships may be at risk. Be direct and specific." },
+            { "name": "user_prompt", "value": "=Evaluate health for client: {{ $json.client_name }}\n\nMetrics: Meetings {{ $json.meetings_held }}/{{ $json.meetings_scheduled }}, Response time: {{ $json.avg_response_time }} days, Tasks on time: {{ $json.tasks_on_time }}/{{ $json.tasks_total }}, Client-blocked items: {{ $json.client_blocked_count }}, Days since interaction: {{ $json.days_since_interaction }}, Waiting items: {{ $json.waiting_items_count }} (avg age: {{ $json.waiting_items_avg_age }} days)\n\nProvide JSON: { health_score (0-100), score_breakdown (object with factors), trend (improving/stable/declining), risk_flags (array), recommended_actions (array), talking_points (array if score < 70) }" },
+            { "name": "model", "value": "sonnet" },
+            { "name": "workflow_name", "value": "client-health-scoring" },
+            { "name": "client_name", "value": "={{ $json.client_name }}" },
+            { "name": "purpose", "value": "Health scoring" }
+          ]
+        }
+      },
+      "id": "claude-score",
+      "name": "Claude: Score Health",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse scores and check for alerts\nconst results = $input.all();\nconst alerts = [];\nconst summaryRows = [];\n\nfor (const result of results) {\n  const parsed = typeof result.json.parsed_content === 'string' \n    ? JSON.parse(result.json.parsed_content) \n    : result.json.parsed_content;\n  \n  summaryRows.push({\n    client: result.json.client_name,\n    score: parsed.health_score,\n    trend: parsed.trend,\n    top_risk: (parsed.risk_flags || [])[0] || 'None'\n  });\n\n  if (parsed.health_score < 55) {\n    alerts.push({ client: result.json.client_name, score: parsed.health_score, actions: parsed.recommended_actions });\n  }\n}\n\nconst digestHtml = `<h2>Weekly Client Health Digest</h2>\n<table border='1' cellpadding='5'>\n<tr><th>Client</th><th>Score</th><th>Trend</th><th>Top Risk</th></tr>\n${summaryRows.map(r => `<tr><td>${r.client}</td><td>${r.score}</td><td>${r.trend}</td><td>${typeof r.top_risk === 'object' ? r.top_risk.description || JSON.stringify(r.top_risk) : r.top_risk}</td></tr>`).join('')}\n</table>`;\n\nreturn [{ json: { digestHtml, alerts, hasAlerts: alerts.length > 0 } }];"
+      },
+      "id": "aggregate-scores",
+      "name": "Aggregate & Check Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=📊 Weekly Client Health Digest{{ $json.hasAlerts ? ' ⚠️ ALERTS' : '' }}",
+        "message": "={{ $json.digestHtml }}{{ $json.hasAlerts ? '<hr><h3>⚠️ Clients Needing Attention:</h3><pre>' + JSON.stringify($json.alerts, null, 2) + '</pre>' : '' }}"
+      },
+      "id": "send-digest",
+      "name": "Send Health Digest",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1350, 300],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    }
+  ],
+  "connections": {
+    "Sunday 6:00 PM": { "main": [[{ "node": "Get Active Clients", "type": "main", "index": 0 }]] },
+    "Get Active Clients": { "main": [[{ "node": "Gather Health Metrics", "type": "main", "index": 0 }]] },
+    "Gather Health Metrics": { "main": [[{ "node": "Claude: Score Health", "type": "main", "index": 0 }]] },
+    "Claude: Score Health": { "main": [[{ "node": "Aggregate & Check Alerts", "type": "main", "index": 0 }]] },
+    "Aggregate & Check Alerts": { "main": [[{ "node": "Send Health Digest", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase4" }, { "name": "health-scoring" }]
+}

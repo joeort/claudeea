@@ -1,0 +1,175 @@
+{
+  "name": "inbound-lead-capture",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inbound-lead",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Squarespace Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "notes": "Configure Squarespace form to POST to this webhook URL. Fields: name, email, company, title, message"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and normalize form data\nconst body = $input.all()[0].json.body || $input.all()[0].json;\nreturn [{\n  json: {\n    lead_name: body.name || body.firstName + ' ' + (body.lastName || ''),\n    lead_email: body.email || '',\n    company_name: body.company || body.companyName || '',\n    title: body.title || body.jobTitle || '',\n    message: body.message || body.comments || '',\n    source: 'website_form',\n    received_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "normalize-data",
+      "name": "Normalize Form Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apollo.io/api/v1/people/match",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ email: $json.lead_email, reveal_personal_emails: false }) }}"
+      },
+      "id": "enrich-apollo",
+      "name": "Enrich with Apollo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300],
+      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "Apollo API Key" } },
+      "notes": "Header: x-api-key = your Apollo API key. Alternative: use Clearbit.",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge lead data with enrichment, then call Claude for scoring\nconst lead = $('Normalize Form Data').first().json;\nconst enrichment = $input.all()[0].json;\nconst person = enrichment.person || {};\nconst org = person.organization || {};\n\nreturn [{\n  json: {\n    ...lead,\n    industry: org.industry || 'Unknown',\n    employee_count: org.estimated_num_employees || 'Unknown',\n    estimated_arr: org.annual_revenue_printed || 'Unknown',\n    funding_stage: org.latest_funding_stage || 'Unknown',\n    tech_stack: (person.organization?.current_technologies || []).join(', ') || 'Unknown',\n    recent_news: '',\n    website: org.website_url || ''\n  }\n}];"
+      },
+      "id": "merge-enrichment",
+      "name": "Merge Enrichment Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" },
+        "fields": {
+          "values": [
+            { "name": "system_prompt", "value": "You are a lead qualification assistant for a solo RevOps consultant who works with B2B SaaS companies ($10-100M ARR). You evaluate inbound leads to determine fit and priority. Be decisive — a clear \"not a fit\" is more valuable than a wishy-washy \"maybe.\"" },
+            { "name": "user_prompt", "value": "=Score and qualify this inbound lead.\n\n**Lead:** {{ $json.lead_name }}\n**Email:** {{ $json.lead_email }}\n**Company:** {{ $json.company_name }}\n**Title:** {{ $json.title }}\n**Message:** {{ $json.message }}\n**Industry:** {{ $json.industry }}\n**Employee Count:** {{ $json.employee_count }}\n**Estimated ARR:** {{ $json.estimated_arr }}\n**Funding:** {{ $json.funding_stage }}\n\nRespond with JSON: { fit_score (0-100), tier (Hot/Warm/Cool/Not a Fit), icp_match (Strong/Partial/Weak), reason (1-2 sentences), recommended_action (specific next step), response_draft (email reply appropriate for the tier), research_notes (key things to know before a call) }" },
+            { "name": "model", "value": "sonnet" },
+            { "name": "workflow_name", "value": "inbound-lead-capture" },
+            { "name": "client_name", "value": "={{ $json.company_name }}" },
+            { "name": "purpose", "value": "Lead scoring" }
+          ]
+        }
+      },
+      "id": "claude-score",
+      "name": "Claude: Score Lead",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude scoring and prepare outputs\nconst scoring = $input.all()[0].json;\nconst lead = $('Merge Enrichment Data').first().json;\nconst parsed = typeof scoring.parsed_content === 'string' \n  ? JSON.parse(scoring.parsed_content) \n  : scoring.parsed_content;\n\nreturn [{\n  json: {\n    ...lead,\n    ...parsed,\n    is_hot: parsed.tier === 'Hot'\n  }\n}];"
+      },
+      "id": "parse-scoring",
+      "name": "Parse Lead Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { email: $json.lead_email, firstname: $json.lead_name.split(' ')[0], lastname: $json.lead_name.split(' ').slice(1).join(' '), company: $json.company_name, jobtitle: $json.title, lead_score: String($json.fit_score), lead_tier: $json.tier, hs_lead_status: $json.tier === 'Hot' ? 'NEW' : 'OPEN' } }) }}"
+      },
+      "id": "create-hubspot-contact",
+      "name": "Create HubSpot Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1570, 200],
+      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "HubSpot API Key" } },
+      "notes": "Header: Authorization = Bearer your_hubspot_token"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "leftValue": "={{ $json.is_hot }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }
+          ]
+        }
+      },
+      "id": "is-hot-lead",
+      "name": "Is Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1570, 400]
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=🔥 Hot Lead: {{ $json.lead_name }} @ {{ $json.company_name }} (Score: {{ $json.fit_score }})",
+        "message": "=<h2>New Hot Lead</h2>\n<p><strong>{{ $json.lead_name }}</strong> — {{ $json.title }} at {{ $json.company_name }}</p>\n<p><strong>Score:</strong> {{ $json.fit_score }}/100 ({{ $json.tier }})</p>\n<p><strong>ICP Match:</strong> {{ $json.icp_match }}</p>\n<p><strong>Why:</strong> {{ $json.reason }}</p>\n<hr>\n<p><strong>Their message:</strong> {{ $json.message }}</p>\n<hr>\n<p><strong>Recommended action:</strong> {{ $json.recommended_action }}</p>\n<p><strong>Research notes:</strong> {{ $json.research_notes }}</p>\n<hr>\n<p>Response draft has been created in Gmail.</p>"
+      },
+      "id": "hot-lead-alert",
+      "name": "Immediate Alert: Hot Lead",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1790, 350],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.lead_email }}",
+        "subject": "=Re: Your inquiry about RevOps consulting",
+        "message": "={{ $json.response_draft }}",
+        "options": {}
+      },
+      "id": "create-response-draft",
+      "name": "Create Response Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1570, 600],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } },
+      "notes": "Set operation to 'createDraft' in n8n UI — review before sending!"
+    }
+  ],
+  "connections": {
+    "Squarespace Form Webhook": { "main": [[{ "node": "Normalize Form Data", "type": "main", "index": 0 }]] },
+    "Normalize Form Data": { "main": [[{ "node": "Enrich with Apollo", "type": "main", "index": 0 }]] },
+    "Enrich with Apollo": {
+      "main": [
+        [{ "node": "Merge Enrichment Data", "type": "main", "index": 0 }],
+        [{ "node": "Merge Enrichment Data", "type": "main", "index": 0 }]
+      ]
+    },
+    "Merge Enrichment Data": { "main": [[{ "node": "Claude: Score Lead", "type": "main", "index": 0 }]] },
+    "Claude: Score Lead": { "main": [[{ "node": "Parse Lead Score", "type": "main", "index": 0 }]] },
+    "Parse Lead Score": {
+      "main": [[
+        { "node": "Create HubSpot Contact", "type": "main", "index": 0 },
+        { "node": "Is Hot Lead?", "type": "main", "index": 0 },
+        { "node": "Create Response Draft", "type": "main", "index": 0 }
+      ]]
+    },
+    "Is Hot Lead?": {
+      "main": [
+        [{ "node": "Immediate Alert: Hot Lead", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase3" }, { "name": "inbound" }]
+}

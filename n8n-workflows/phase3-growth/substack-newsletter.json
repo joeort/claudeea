@@ -1,0 +1,103 @@
+{
+  "name": "substack-newsletter",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * 3" }] }
+      },
+      "id": "wednesday-trigger",
+      "name": "Wednesday 8:00 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "CONFIGURE_ME_RSS_FEED_URL",
+        "options": {}
+      },
+      "id": "fetch-news",
+      "name": "Fetch Industry News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [470, 200]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.clickup.com/api/v2/list/CONFIGURE_ME_NEWSLETTER_IDEAS_LIST_ID/task?statuses[]=open&orderBy=priority",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-topic-queue",
+      "name": "Get Newsletter Topic Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 400],
+      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "ClickUp API Key" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build newsletter prompt from inputs\nconst news = $('Fetch Industry News').all().map(i => i.json);\nconst topics = $('Get Newsletter Topic Queue').first().json;\n\nconst topTopic = (topics.tasks || [])[0];\nconst topicName = topTopic?.name || 'RevOps best practices';\nconst topicNotes = topTopic?.description || '';\n\nconst newsItems = news.slice(0, 5).map(n => `- ${n.title}`).join('\\n');\n\n// Calculate edition number (weeks since start)\nconst startDate = new Date('2025-01-01');\nconst editionNum = Math.floor((Date.now() - startDate) / (7 * 24 * 60 * 60 * 1000));\n\nreturn [{\n  json: {\n    system_prompt: `You are a ghostwriter for a RevOps consultant's weekly Substack newsletter. The newsletter targets VP Sales, CROs, and RevOps leaders at B2B SaaS companies ($10-100M ARR).\\n\\n**Newsletter voice:**\\n- More thoughtful and analytical than LinkedIn\\n- Like a smart friend who happens to be a RevOps expert explaining something over coffee\\n- Uses frameworks and mental models, not just tactics\\n- 800-1500 words, never padded\\n- Can be opinionated but always shows the reasoning\\n\\n**Differentiation from LinkedIn:**\\n- LinkedIn = short tactical hits. Substack = deeper analysis and frameworks. Distinct content, not repurposed.`,\n    user_prompt: `Write a draft for this week's Substack newsletter.\\n\\n**Edition #:** ${editionNum}\\n**Week Of:** ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}\\n\\n**Topic:** ${topicName}\\n**Topic Notes:** ${topicNotes}\\n\\n**Recent Industry News:**\\n${newsItems}\\n\\n---\\n\\nGenerate a newsletter with: Title, Subtitle, Estimated read time, then sections: Opening (100-150 words with hook), The Insight/Framework (300-500 words), Practical Application (200-300 words with steps), Closing (100-150 words tying back to opening). Include 1-2 pull quotes. Total 800-1500 words. Use informative subheadings. Bold key sentences for skimmers.`,\n    model: 'opus',\n    workflow_name: 'substack-newsletter',\n    client_name: 'Self',\n    purpose: 'Newsletter draft generation'\n  }\n}];"
+      },
+      "id": "build-prompt",
+      "name": "Build Newsletter Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" }
+      },
+      "id": "claude-write",
+      "name": "Claude (Opus): Write Newsletter",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "create",
+        "title": "=Substack Draft — {{ new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) }}",
+        "content": "={{ $json.content }}"
+      },
+      "id": "create-doc",
+      "name": "Create Draft Google Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 1,
+      "position": [1130, 300],
+      "credentials": { "googleDocsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Docs" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=📰 Substack Draft Ready for Review",
+        "message": "=<p>Your weekly newsletter draft is ready for review in Google Docs.</p>\n<p>Edit, approve, and manually publish to Substack when ready.</p>\n<p><em>Substack API is limited — manual publish recommended for now.</em></p>"
+      },
+      "id": "notify",
+      "name": "Notify: Draft Ready",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1350, 300],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    }
+  ],
+  "connections": {
+    "Wednesday 8:00 AM": {
+      "main": [[
+        { "node": "Fetch Industry News", "type": "main", "index": 0 },
+        { "node": "Get Newsletter Topic Queue", "type": "main", "index": 0 }
+      ]]
+    },
+    "Fetch Industry News": { "main": [[{ "node": "Build Newsletter Prompt", "type": "main", "index": 0 }]] },
+    "Get Newsletter Topic Queue": { "main": [[{ "node": "Build Newsletter Prompt", "type": "main", "index": 0 }]] },
+    "Build Newsletter Prompt": { "main": [[{ "node": "Claude (Opus): Write Newsletter", "type": "main", "index": 0 }]] },
+    "Claude (Opus): Write Newsletter": { "main": [[{ "node": "Create Draft Google Doc", "type": "main", "index": 0 }]] },
+    "Create Draft Google Doc": { "main": [[{ "node": "Notify: Draft Ready", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase3" }, { "name": "substack" }]
+}

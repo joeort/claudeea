@@ -1,0 +1,96 @@
+{
+  "name": "linkedin-publisher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "30 8 * * 1,3,5" }] }
+      },
+      "id": "publish-trigger",
+      "name": "Mon/Wed/Fri 8:30 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// This node would read the current week's draft doc and find the next approved post.\n// The implementation depends on how you mark posts as approved in the Google Doc.\n// Option A: Use Google Docs API to read the doc and find checked checkboxes\n// Option B: Use a separate Google Sheet as a queue\n\n// For now, this is a placeholder that reads from a 'LinkedIn Queue' sheet\n// where approved posts are added with their scheduled date\nreturn [{ json: { placeholder: true, note: 'Configure to read from your approved posts queue' } }];"
+      },
+      "id": "get-next-post",
+      "name": "Get Next Approved Post",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300],
+      "notes": "Read the next approved, unposted draft. Option 1: Google Sheet queue. Option 2: Parse the drafts Google Doc."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/v2/ugcPosts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ author: 'urn:li:person:CONFIGURE_ME_LINKEDIN_PERSON_ID', lifecycleState: 'PUBLISHED', specificContent: { 'com.linkedin.ugc.ShareContent': { shareCommentary: { text: $json.post_text }, shareMediaCategory: 'NONE' } }, visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' } }) }}",
+        "options": {}
+      },
+      "id": "post-to-linkedin",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300],
+      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "LinkedIn OAuth Token" } },
+      "notes": "LinkedIn API requires OAuth 2.0. Alternative: use Buffer/Hootsuite API if LinkedIn direct API is difficult to set up."
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_LINKEDIN_ANALYTICS_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Post Date": "={{ new Date().toISOString() }}",
+            "Post Text (first 50 chars)": "={{ $json.post_text?.substring(0, 50) || '' }}",
+            "Category": "={{ $json.category || '' }}",
+            "Notes": "Posted via n8n automation"
+          }
+        }
+      },
+      "id": "log-post",
+      "name": "Log to Analytics Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [910, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 3,5,0" }] }
+      },
+      "id": "engagement-trigger",
+      "name": "48hr Engagement Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 550],
+      "notes": "Fires 48 hours after Mon/Wed/Fri posts to fetch engagement metrics"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch engagement metrics for recent posts\n// This would use LinkedIn API to get impressions, likes, comments, shares\n// for posts made 48 hours ago\nreturn [{ json: { note: 'Configure LinkedIn API call to fetch post analytics. Use the ugcPosts endpoint with the post URN stored in the analytics sheet.' } }];"
+      },
+      "id": "fetch-engagement",
+      "name": "Fetch Engagement Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 550],
+      "notes": "LinkedIn Social Actions API: GET https://api.linkedin.com/v2/socialActions/{postUrn}"
+    }
+  ],
+  "connections": {
+    "Mon/Wed/Fri 8:30 AM": { "main": [[{ "node": "Get Next Approved Post", "type": "main", "index": 0 }]] },
+    "Get Next Approved Post": { "main": [[{ "node": "Post to LinkedIn", "type": "main", "index": 0 }]] },
+    "Post to LinkedIn": { "main": [[{ "node": "Log to Analytics Sheet", "type": "main", "index": 0 }]] },
+    "48hr Engagement Check": { "main": [[{ "node": "Fetch Engagement Metrics", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase3" }, { "name": "linkedin" }]
+}

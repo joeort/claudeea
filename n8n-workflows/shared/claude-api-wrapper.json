@@ -1,0 +1,127 @@
+{
+  "name": "claude-api-wrapper",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-input",
+      "name": "Sub-Workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "notes": "Receives: system_prompt, user_prompt, model (sonnet|opus), workflow_name, client_name, purpose"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Route model preference to correct model ID\nconst input = $input.all()[0].json;\nconst modelMap = {\n  'sonnet': 'claude-sonnet-4-6',\n  'opus': 'claude-opus-4-6',\n  'haiku': 'claude-haiku-4-5-20251001'\n};\n\nconst model = modelMap[input.model] || modelMap['sonnet'];\nconst maxTokens = input.model === 'opus' ? 8192 : 4096;\n\nreturn [{\n  json: {\n    ...input,\n    model_id: model,\n    max_tokens: maxTokens,\n    retry_count: 0,\n    max_retries: 3\n  }\n}];"
+      },
+      "id": "model-router",
+      "name": "Model Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $json.model_id, max_tokens: $json.max_tokens, system: $json.system_prompt, messages: [{ role: 'user', content: $json.user_prompt }] }) }}",
+        "options": {
+          "timeout": 120000,
+          "response": { "response": { "fullResponse": true } }
+        }
+      },
+      "id": "claude-api-call",
+      "name": "Claude API Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "Anthropic API Key" }
+      },
+      "notes": "Configure credential: Header Name = 'x-api-key', Header Value = your Anthropic API key",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse successful response and extract usage for cost logging\nconst response = $input.all()[0].json;\nconst body = response.body || response;\n\nconst content = body.content?.[0]?.text || '';\nconst inputTokens = body.usage?.input_tokens || 0;\nconst outputTokens = body.usage?.output_tokens || 0;\n\n// Cost calculation (as of 2025)\nconst costs = {\n  'claude-sonnet-4-6': { input: 3.00 / 1000000, output: 15.00 / 1000000 },\n  'claude-opus-4-6': { input: 15.00 / 1000000, output: 75.00 / 1000000 },\n  'claude-haiku-4-5-20251001': { input: 0.80 / 1000000, output: 4.00 / 1000000 }\n};\n\nconst modelCost = costs[$json.model_id] || costs['claude-sonnet-4-6'];\nconst inputCost = inputTokens * modelCost.input;\nconst outputCost = outputTokens * modelCost.output;\n\n// Try to parse JSON from response if it looks like JSON\nlet parsedContent = content;\ntry {\n  const jsonMatch = content.match(/```json\\n([\\s\\S]*?)\\n```/) || content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsedContent = JSON.parse(jsonMatch[1] || jsonMatch[0]);\n  }\n} catch (e) {\n  // Keep as string if not valid JSON\n}\n\nreturn [{\n  json: {\n    content: content,\n    parsed_content: parsedContent,\n    model: $json.model_id,\n    input_tokens: inputTokens,\n    output_tokens: outputTokens,\n    input_cost: inputCost.toFixed(6),\n    output_cost: outputCost.toFixed(6),\n    total_cost: (inputCost + outputCost).toFixed(6),\n    workflow_name: $json.workflow_name,\n    client_name: $json.client_name,\n    purpose: $json.purpose,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "parse-response",
+      "name": "Parse Response & Calculate Cost",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Retry logic with exponential backoff\nconst input = $input.all()[0].json;\nconst retryCount = (input.retry_count || 0) + 1;\nconst maxRetries = input.max_retries || 3;\n\nif (retryCount > maxRetries) {\n  throw new Error(`Claude API failed after ${maxRetries} retries. Last error: ${JSON.stringify(input)}`);\n}\n\n// Exponential backoff: 2s, 4s, 8s\nconst backoffMs = Math.pow(2, retryCount) * 1000;\nawait new Promise(resolve => setTimeout(resolve, backoffMs));\n\nreturn [{\n  json: {\n    ...input,\n    retry_count: retryCount\n  }\n}];"
+      },
+      "id": "retry-handler",
+      "name": "Retry with Backoff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_COST_LOG_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $json.timestamp }}",
+            "Workflow Name": "={{ $json.workflow_name }}",
+            "Model": "={{ $json.model }}",
+            "Input Tokens": "={{ $json.input_tokens }}",
+            "Output Tokens": "={{ $json.output_tokens }}",
+            "Input Cost": "={{ $json.input_cost }}",
+            "Output Cost": "={{ $json.output_cost }}",
+            "Total Cost": "={{ $json.total_cost }}",
+            "Client Name": "={{ $json.client_name }}",
+            "Purpose": "={{ $json.purpose }}"
+          }
+        }
+      },
+      "id": "log-cost",
+      "name": "Log API Cost",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1130, 200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {},
+      "id": "output",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1350, 200],
+      "notes": "Returns: content, parsed_content, model, token counts, costs"
+    }
+  ],
+  "connections": {
+    "Sub-Workflow Input": { "main": [[{ "node": "Model Router", "type": "main", "index": 0 }]] },
+    "Model Router": { "main": [[{ "node": "Claude API Call", "type": "main", "index": 0 }]] },
+    "Claude API Call": {
+      "main": [
+        [{ "node": "Parse Response & Calculate Cost", "type": "main", "index": 0 }],
+        [{ "node": "Retry with Backoff", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Response & Calculate Cost": { "main": [[{ "node": "Log API Cost", "type": "main", "index": 0 }]] },
+    "Retry with Backoff": { "main": [[{ "node": "Claude API Call", "type": "main", "index": 0 }]] },
+    "Log API Cost": { "main": [[{ "node": "Return Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "shared" }, { "name": "utility" }]
+}

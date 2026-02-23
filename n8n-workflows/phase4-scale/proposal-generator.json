@@ -1,0 +1,77 @@
+{
+  "name": "proposal-generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-proposal",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Trigger: Generate Proposal",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "notes": "POST with: company_name, industry, arr, employee_count, sales_team_size, crm, website, challenges, current_state, desired_outcomes, timeline, budget_signals, stakeholders, source, scope_tier, duration, investment, billing_frequency"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" },
+        "fields": {
+          "values": [
+            { "name": "system_prompt", "value": "You are a senior RevOps consultant generating tailored proposals for B2B SaaS companies. Your proposals are specific to the prospect's situation (not generic templates), outcome-focused, professionally structured, and confident in tone." },
+            { "name": "user_prompt", "value": "=Generate a tailored consulting proposal.\n\n**Prospect:** {{ $json.body.company_name }}\nIndustry: {{ $json.body.industry }} | ARR: ${{ $json.body.arr }} | Employees: {{ $json.body.employee_count }}\nSales Team: {{ $json.body.sales_team_size }} | CRM: {{ $json.body.crm }} | Website: {{ $json.body.website }}\n\n**Discovery Context:**\nChallenges: {{ $json.body.challenges }}\nCurrent State: {{ $json.body.current_state }}\nDesired Outcomes: {{ $json.body.desired_outcomes }}\nTimeline: {{ $json.body.timeline }}\nBudget Signals: {{ $json.body.budget_signals }}\nStakeholders: {{ $json.body.stakeholders }}\nSource: {{ $json.body.source }}\n\n**Engagement:** {{ $json.body.scope_tier }} | {{ $json.body.duration }} | ${{ $json.body.investment }}/{{ $json.body.billing_frequency }}\n\nGenerate a 4-6 page proposal with: Executive Summary, Current State Assessment, Proposed Engagement (Scope with deliverables, What's NOT Included, Approach), Timeline table, Investment details, Why Work With Me (with anonymized proof points), and Next Steps.\n\nAlso generate a short companion email (3-4 paragraphs) to send with the proposal." },
+            { "name": "model", "value": "opus" },
+            { "name": "workflow_name", "value": "proposal-generator" },
+            { "name": "client_name", "value": "={{ $json.body.company_name }}" },
+            { "name": "purpose", "value": "Proposal generation" }
+          ]
+        }
+      },
+      "id": "claude-proposal",
+      "name": "Claude (Opus): Generate Proposal",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "create",
+        "title": "=Proposal — {{ $('Trigger: Generate Proposal').first().json.body.company_name }} — {{ new Date().toLocaleDateString('en-US') }}",
+        "content": "={{ $json.content }}"
+      },
+      "id": "create-proposal-doc",
+      "name": "Create Proposal Google Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 1,
+      "position": [690, 200],
+      "credentials": { "googleDocsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Docs" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=📄 Proposal Ready: {{ $('Trigger: Generate Proposal').first().json.body.company_name }}",
+        "message": "=<p>Proposal and companion email draft are ready for review:</p>\n<ul>\n<li>Proposal Google Doc: created in Proposals folder</li>\n<li>Companion email: created as Gmail draft</li>\n</ul>\n<p>Review, finalize formatting, and send when ready.</p>"
+      },
+      "id": "notify",
+      "name": "Notify: Proposal Ready",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [690, 400],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    }
+  ],
+  "connections": {
+    "Trigger: Generate Proposal": { "main": [[{ "node": "Claude (Opus): Generate Proposal", "type": "main", "index": 0 }]] },
+    "Claude (Opus): Generate Proposal": {
+      "main": [[
+        { "node": "Create Proposal Google Doc", "type": "main", "index": 0 },
+        { "node": "Notify: Proposal Ready", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase4" }, { "name": "proposals" }]
+}

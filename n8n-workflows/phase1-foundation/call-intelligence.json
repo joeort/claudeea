@@ -1,0 +1,190 @@
+{
+  "name": "call-intelligence",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute", "value": 5 }] },
+        "filters": {
+          "sender": "notifications@fathom.video",
+          "readStatus": "unread"
+        },
+        "options": { "markAsRead": true }
+      },
+      "id": "gmail-trigger",
+      "name": "Watch Fathom Emails",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } },
+      "notes": "Polls Gmail every 5 min for unread emails from Fathom. Adjust sender filter if your Fathom sends from a different address."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Fathom email for meeting data\nconst email = $input.all()[0].json;\nconst body = email.text || email.snippet || '';\nconst htmlBody = email.html || '';\n\n// Extract meeting title from subject\n// Fathom subjects typically: \"Meeting notes: [Title]\" or \"[Title] - Meeting Summary\"\nconst subject = email.subject || '';\nlet meetingTitle = subject\n  .replace(/^(Meeting notes:|Meeting summary:|Notes from)\\s*/i, '')\n  .replace(/\\s*-\\s*(Meeting Summary|Notes)$/i, '')\n  .trim();\n\n// Extract date from email headers\nconst meetingDate = email.date || new Date().toISOString();\n\n// Extract attendees - look for common Fathom patterns\nconst attendeePatterns = [\n  /Attendees?:?\\s*([^\\n]+)/i,\n  /Participants?:?\\s*([^\\n]+)/i,\n  /With:?\\s*([^\\n]+)/i\n];\n\nlet attendees = '';\nfor (const pattern of attendeePatterns) {\n  const match = body.match(pattern);\n  if (match) { attendees = match[1].trim(); break; }\n}\n\n// Extract summary section\nconst summaryMatch = body.match(/(?:Summary|Overview)[:\\s]*\\n([\\s\\S]*?)(?=\\n(?:Action Items|Key Points|Decisions|$))/i);\nconst summary = summaryMatch ? summaryMatch[1].trim() : body.substring(0, 2000);\n\n// Extract action items section\nconst actionItemsMatch = body.match(/(?:Action Items|Next Steps|Tasks)[:\\s]*\\n([\\s\\S]*?)(?=\\n(?:Key Points|Decisions|Summary|$))/i);\nconst actionItems = actionItemsMatch ? actionItemsMatch[1].trim() : 'None auto-detected';\n\n// Extract attendee email domains for client matching\nconst emailDomains = [];\nconst emailRegex = /[\\w.-]+@([\\w.-]+\\.\\w+)/g;\nlet emailMatch;\nwhile ((emailMatch = emailRegex.exec(attendees + ' ' + body)) !== null) {\n  const domain = emailMatch[1].toLowerCase();\n  if (!domain.includes('gmail.com') && !domain.includes('fathom')) {\n    emailDomains.push(domain);\n  }\n}\n\nreturn [{\n  json: {\n    meeting_title: meetingTitle,\n    meeting_date: meetingDate,\n    attendees: attendees,\n    attendee_domains: [...new Set(emailDomains)],\n    fathom_summary: summary,\n    fathom_action_items: actionItems,\n    raw_email_body: body,\n    email_id: email.id\n  }\n}];"
+      },
+      "id": "parse-fathom",
+      "name": "Parse Fathom Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Try to match client from attendee domains\nconst data = $input.all()[0].json;\nconst domains = data.attendee_domains || [];\n\n// We'll call client-lookup for each domain and return the first match\n// For the sub-workflow call, pass the first domain\nreturn [{\n  json: {\n    ...data,\n    lookup_type: 'email_domain',\n    lookup_value: domains[0] || 'unknown'\n  }\n}];"
+      },
+      "id": "prep-lookup",
+      "name": "Prepare Client Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_LOOKUP_WORKFLOW_ID" }
+      },
+      "id": "client-lookup",
+      "name": "Client Lookup",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [910, 300],
+      "notes": "Calls the client-lookup sub-workflow. Set the workflow ID after importing."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge parsed email data with client config\nconst emailData = $('Parse Fathom Email').first().json;\nconst clientData = $input.all()[0].json;\n\nreturn [{\n  json: {\n    ...emailData,\n    client: clientData,\n    client_found: clientData.found || false,\n    client_name: clientData.client_name || 'Unknown Client'\n  }\n}];"
+      },
+      "id": "merge-data",
+      "name": "Merge Email + Client Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" },
+        "fields": {
+          "values": [
+            { "name": "system_prompt", "value": "You are a senior RevOps consultant's AI assistant. You analyze meeting transcripts and summaries from B2B SaaS client calls to extract actionable intelligence.\n\nYour analysis must be:\n- Exhaustive on action items (Fathom's auto-detection misses ~30% of implicit commitments)\n- Clear on ownership (consultant vs. client vs. third party)\n- Specific on deadlines (extract explicit dates; infer reasonable deadlines for items without them)\n- Alert to risk signals (scope creep, stakeholder misalignment, budget concerns, timeline pressure)\n\nOutput format must be structured JSON for downstream automation." },
+            { "name": "user_prompt", "value": "=Analyze this meeting summary and extract all actionable intelligence.\n\n**Meeting Info:**\n- Title: {{ $json.meeting_title }}\n- Date: {{ $json.meeting_date }}\n- Attendees: {{ $json.attendees }}\n- Client: {{ $json.client_name }}\n\n**Fathom Summary:**\n{{ $json.fathom_summary }}\n\n**Fathom Action Items (auto-detected):**\n{{ $json.fathom_action_items }}\n\n---\n\nRespond with JSON containing: executive_summary, action_items (array with action, owner, priority, deadline, category, context, clickup_list), risk_flags (array with type, severity, description, recommended_action), key_decisions (array), next_meeting_suggestions (array), sentiment, engagement_health_delta." },
+            { "name": "model", "value": "sonnet" },
+            { "name": "workflow_name", "value": "call-intelligence" },
+            { "name": "client_name", "value": "={{ $json.client_name }}" },
+            { "name": "purpose", "value": "Meeting notes extraction" }
+          ]
+        }
+      },
+      "id": "claude-analyze",
+      "name": "Claude: Analyze Meeting",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's analysis and prepare ClickUp tasks\nconst analysis = $input.all()[0].json;\nconst meetingData = $('Merge Email + Client Data').first().json;\nconst parsed = typeof analysis.parsed_content === 'string' \n  ? JSON.parse(analysis.parsed_content) \n  : analysis.parsed_content;\n\n// Map action items to ClickUp task format\nconst tasks = (parsed.action_items || []).map(item => ({\n  name: item.action,\n  description: `**Owner:** ${item.owner}\\n**Priority:** ${item.priority}\\n**Deadline:** ${item.deadline}\\n**Category:** ${item.category}\\n**Context:** ${item.context}\\n\\n_From meeting: ${meetingData.meeting_title} (${meetingData.meeting_date})_`,\n  priority: item.priority === 'high' ? 1 : item.priority === 'medium' ? 2 : 3,\n  list_type: item.clickup_list,\n  due_date: item.deadline !== 'ASAP' && item.deadline !== 'next meeting' ? item.deadline : null\n}));\n\n// Check for high-severity risk flags\nconst highRisks = (parsed.risk_flags || []).filter(r => r.severity === 'high');\n\nreturn [{\n  json: {\n    ...meetingData,\n    analysis: parsed,\n    tasks: tasks,\n    high_risks: highRisks,\n    has_high_risks: highRisks.length > 0,\n    meeting_notes_content: `# ${meetingData.meeting_title}\\n\\n**Date:** ${meetingData.meeting_date}\\n**Attendees:** ${meetingData.attendees}\\n**Client:** ${meetingData.client_name}\\n\\n## Executive Summary\\n${parsed.executive_summary}\\n\\n## Action Items\\n${(parsed.action_items || []).map(i => `- [${i.owner}] ${i.action} (${i.priority} priority, due: ${i.deadline})`).join('\\n')}\\n\\n## Key Decisions\\n${(parsed.key_decisions || []).map(d => `- ${d.decision}: ${d.rationale}`).join('\\n')}\\n\\n## Risk Flags\\n${(parsed.risk_flags || []).map(r => `- [${r.severity}] ${r.type}: ${r.description}`).join('\\n')}\\n\\n## Next Meeting Suggestions\\n${(parsed.next_meeting_suggestions || []).map(s => `- ${s}`).join('\\n')}\\n\\n---\\n_Sentiment: ${parsed.sentiment} | Engagement Trend: ${parsed.engagement_health_delta}_`\n  }\n}];"
+      },
+      "id": "prepare-outputs",
+      "name": "Prepare ClickUp Tasks + Notes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1570, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split tasks into individual items for ClickUp creation\nconst data = $input.all()[0].json;\nreturn data.tasks.map(task => ({ json: { ...task, client: data.client } }));"
+      },
+      "id": "split-tasks",
+      "name": "Split Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1790, 200]
+    },
+    {
+      "parameters": {
+        "resource": "task",
+        "name": "={{ $json.name }}",
+        "list": "CONFIGURE_ME_CLICKUP_LIST_ID",
+        "additionalFields": {
+          "content": "={{ $json.description }}",
+          "priority": "={{ $json.priority }}"
+        }
+      },
+      "id": "create-clickup-tasks",
+      "name": "Create ClickUp Tasks",
+      "type": "n8n-nodes-base.clickUp",
+      "typeVersion": 1,
+      "position": [2010, 200],
+      "credentials": { "clickUpApi": { "id": "CONFIGURE_ME", "name": "ClickUp" } },
+      "notes": "Configure list IDs based on client's ClickUp space. Use 'Active' for consultant tasks, 'Waiting on Client' for client tasks."
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "create",
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME" },
+        "content": "={{ $('Prepare ClickUp Tasks + Notes').first().json.meeting_notes_content }}",
+        "title": "=Meeting Notes: {{ $('Prepare ClickUp Tasks + Notes').first().json.meeting_title }} - {{ $('Prepare ClickUp Tasks + Notes').first().json.meeting_date }}"
+      },
+      "id": "save-notes-gdoc",
+      "name": "Save Meeting Notes to Google Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 1,
+      "position": [1790, 400],
+      "credentials": { "googleDocsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Docs" } },
+      "notes": "Creates a Google Doc in the client's Drive folder. Configure the parent folder ID from client-lookup."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "leftValue": "={{ $('Prepare ClickUp Tasks + Notes').first().json.has_high_risks }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }
+          ]
+        }
+      },
+      "id": "check-risks",
+      "name": "High Risk Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1790, 600]
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=⚠️ Risk Flag: {{ $('Prepare ClickUp Tasks + Notes').first().json.client_name }} - {{ $('Prepare ClickUp Tasks + Notes').first().json.meeting_title }}",
+        "message": "=<h2>High-Priority Risk Detected</h2>\n<p><strong>Client:</strong> {{ $('Prepare ClickUp Tasks + Notes').first().json.client_name }}</p>\n<p><strong>Meeting:</strong> {{ $('Prepare ClickUp Tasks + Notes').first().json.meeting_title }}</p>\n<hr>\n{{ $('Prepare ClickUp Tasks + Notes').first().json.high_risks.map(r => `<p><strong>${r.type}:</strong> ${r.description}<br><em>Recommended:</em> ${r.recommended_action}</p>`).join('') }}"
+      },
+      "id": "risk-alert",
+      "name": "Send Risk Alert Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2010, 550],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    }
+  ],
+  "connections": {
+    "Watch Fathom Emails": { "main": [[{ "node": "Parse Fathom Email", "type": "main", "index": 0 }]] },
+    "Parse Fathom Email": { "main": [[{ "node": "Prepare Client Lookup", "type": "main", "index": 0 }]] },
+    "Prepare Client Lookup": { "main": [[{ "node": "Client Lookup", "type": "main", "index": 0 }]] },
+    "Client Lookup": { "main": [[{ "node": "Merge Email + Client Data", "type": "main", "index": 0 }]] },
+    "Merge Email + Client Data": { "main": [[{ "node": "Claude: Analyze Meeting", "type": "main", "index": 0 }]] },
+    "Claude: Analyze Meeting": { "main": [[{ "node": "Prepare ClickUp Tasks + Notes", "type": "main", "index": 0 }]] },
+    "Prepare ClickUp Tasks + Notes": {
+      "main": [[
+        { "node": "Split Tasks", "type": "main", "index": 0 },
+        { "node": "Save Meeting Notes to Google Doc", "type": "main", "index": 0 },
+        { "node": "High Risk Detected?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Split Tasks": { "main": [[{ "node": "Create ClickUp Tasks", "type": "main", "index": 0 }]] },
+    "High Risk Detected?": {
+      "main": [
+        [{ "node": "Send Risk Alert Email", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase1" }, { "name": "call-intelligence" }]
+}

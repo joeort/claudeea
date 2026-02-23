@@ -1,0 +1,153 @@
+{
+  "name": "time-tracking",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 23 * * *" }] }
+      },
+      "id": "daily-cron",
+      "name": "Daily 11:00 PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 200],
+      "notes": "Daily: auto-log meetings to Toggl"
+    },
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 1 * *" }] }
+      },
+      "id": "monthly-cron",
+      "name": "1st of Month 9:00 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 500],
+      "notes": "Monthly: generate invoice summary"
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "getAll",
+        "calendarId": "primary",
+        "options": {
+          "timeMin": "={{ $now.startOf('day').toISO() }}",
+          "timeMax": "={{ $now.endOf('day').toISO() }}"
+        }
+      },
+      "id": "get-today-events",
+      "name": "Get Today's Calendar Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 3,
+      "position": [470, 200],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Calendar" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter to client meetings and prepare Toggl entries\nconst events = $input.all().map(i => i.json);\nconst clientMeetings = [];\n\nfor (const event of events) {\n  const attendees = (event.attendees || []).map(a => a.email);\n  const domains = attendees.map(e => e.split('@')[1]).filter(d => d && !d.includes('gmail.com'));\n  \n  if (domains.length > 0) {\n    const start = new Date(event.start?.dateTime || event.start?.date);\n    const end = new Date(event.end?.dateTime || event.end?.date);\n    const durationSec = Math.round((end - start) / 1000);\n    \n    clientMeetings.push({\n      description: event.summary || 'Client Meeting',\n      start: start.toISOString(),\n      duration: durationSec,\n      domain: domains[0],\n      lookup_type: 'email_domain',\n      lookup_value: domains[0]\n    });\n  }\n}\n\nreturn clientMeetings.map(m => ({ json: m }));"
+      },
+      "id": "filter-client-meetings",
+      "name": "Filter Client Meetings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 200]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_LOOKUP_WORKFLOW_ID" }
+      },
+      "id": "lookup-client-for-toggl",
+      "name": "Client Lookup (for Toggl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.track.toggl.com/api/v9/workspaces/CONFIGURE_ME_WORKSPACE_ID/time_entries",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ description: $('Filter Client Meetings').first().json.description, start: $('Filter Client Meetings').first().json.start, duration: $('Filter Client Meetings').first().json.duration, project_id: parseInt($json.toggl_project_id) || null, created_with: 'n8n-automation' }) }}"
+      },
+      "id": "create-toggl-entry",
+      "name": "Create Toggl Time Entry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 200],
+      "credentials": { "httpBasicAuth": { "id": "CONFIGURE_ME", "name": "Toggl API (email:api_token)" } },
+      "notes": "Basic auth: username = your Toggl email, password = your Toggl API token"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.track.toggl.com/reports/api/v3/workspace/CONFIGURE_ME_WORKSPACE_ID/summary/time_entries",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ start_date: $now.minus({ months: 1 }).startOf('month').toFormat('yyyy-MM-dd'), end_date: $now.minus({ months: 1 }).endOf('month').toFormat('yyyy-MM-dd'), grouping: 'projects' }) }}"
+      },
+      "id": "get-monthly-time",
+      "name": "Get Last Month's Time",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 500],
+      "credentials": { "httpBasicAuth": { "id": "CONFIGURE_ME", "name": "Toggl API" } }
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "filters": { "conditions": [{ "lookupColumn": "Status", "lookupValue": "Active" }] }
+      },
+      "id": "get-retainer-info",
+      "name": "Get Retainer Info",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [470, 700],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare hours vs retainer and generate invoice summary\nconst timeData = $('Get Last Month\\'s Time').first().json;\nconst clients = $('Get Retainer Info').all().map(i => i.json);\n\nconst groups = timeData.groups || [];\nconst summary = [];\n\nfor (const client of clients) {\n  const togglProjectId = client['Toggl Project ID'];\n  const retainerHours = parseFloat(client['Retainer Hours/Month'] || 0);\n  const hourlyRate = parseFloat(client['Hourly Rate'] || 0);\n  \n  // Find matching Toggl project\n  const projectGroup = groups.find(g => String(g.id) === String(togglProjectId));\n  const actualSeconds = projectGroup?.sub_groups?.reduce((sum, sg) => sum + (sg.seconds || 0), 0) || 0;\n  const actualHours = Math.round(actualSeconds / 3600 * 10) / 10;\n  \n  const delta = actualHours - retainerHours;\n  const status = delta > 2 ? 'OVER' : delta < -5 ? 'UNDER' : 'ON TRACK';\n  const invoiceAmount = retainerHours > 0 \n    ? hourlyRate * retainerHours + Math.max(0, delta) * hourlyRate \n    : hourlyRate * actualHours;\n\n  summary.push({\n    client: client['Client Name'],\n    retainer_hours: retainerHours,\n    actual_hours: actualHours,\n    delta: delta,\n    status: status,\n    hourly_rate: hourlyRate,\n    invoice_amount: invoiceAmount\n  });\n}\n\nconst totalInvoice = summary.reduce((sum, s) => sum + s.invoice_amount, 0);\n\nconst emailBody = `<h2>Monthly Time & Invoice Summary</h2>\n<p><strong>Period:</strong> Last month</p>\n<table border='1' cellpadding='5'>\n<tr><th>Client</th><th>Retainer</th><th>Actual</th><th>Delta</th><th>Status</th><th>Invoice</th></tr>\n${summary.map(s => `<tr><td>${s.client}</td><td>${s.retainer_hours}h</td><td>${s.actual_hours}h</td><td>${s.delta > 0 ? '+' : ''}${s.delta}h</td><td>${s.status}</td><td>$${s.invoice_amount.toLocaleString()}</td></tr>`).join('')}\n</table>\n<p><strong>Total: $${totalInvoice.toLocaleString()}</strong></p>`;\n\nreturn [{ json: { summary, totalInvoice, emailBody } }];"
+      },
+      "id": "generate-invoice-summary",
+      "name": "Generate Invoice Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 600]
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=📊 Monthly Invoice Summary — ${{ $json.totalInvoice.toLocaleString() }}",
+        "message": "={{ $json.emailBody }}"
+      },
+      "id": "send-invoice-summary",
+      "name": "Email Invoice Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [910, 600],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    }
+  ],
+  "connections": {
+    "Daily 11:00 PM": { "main": [[{ "node": "Get Today's Calendar Events", "type": "main", "index": 0 }]] },
+    "Get Today's Calendar Events": { "main": [[{ "node": "Filter Client Meetings", "type": "main", "index": 0 }]] },
+    "Filter Client Meetings": { "main": [[{ "node": "Client Lookup (for Toggl)", "type": "main", "index": 0 }]] },
+    "Client Lookup (for Toggl)": { "main": [[{ "node": "Create Toggl Time Entry", "type": "main", "index": 0 }]] },
+    "1st of Month 9:00 AM": {
+      "main": [[
+        { "node": "Get Last Month's Time", "type": "main", "index": 0 },
+        { "node": "Get Retainer Info", "type": "main", "index": 0 }
+      ]]
+    },
+    "Get Last Month's Time": { "main": [[{ "node": "Generate Invoice Summary", "type": "main", "index": 0 }]] },
+    "Get Retainer Info": { "main": [[{ "node": "Generate Invoice Summary", "type": "main", "index": 0 }]] },
+    "Generate Invoice Summary": { "main": [[{ "node": "Email Invoice Summary", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase2" }, { "name": "time-tracking" }]
+}

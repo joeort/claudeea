@@ -1,0 +1,130 @@
+{
+  "name": "linkedin-content-generator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * 0" }] }
+      },
+      "id": "sunday-trigger",
+      "name": "Sunday 8:00 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CONTENT_CALENDAR_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "options": { "range": "A:L" }
+      },
+      "id": "read-content-calendar",
+      "name": "Read Content Calendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [470, 200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.clickup.com/api/v2/list/CONFIGURE_ME_CONTENT_IDEAS_LIST_ID/task?statuses[]=open",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-content-ideas",
+      "name": "Get Content Ideas from ClickUp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 400],
+      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "ClickUp API Key" } }
+    },
+    {
+      "parameters": {
+        "url": "CONFIGURE_ME_RSS_FEED_URL",
+        "options": {}
+      },
+      "id": "fetch-rss",
+      "name": "Fetch Industry RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [470, 600],
+      "notes": "Add RSS feeds: RevOps Co-op, Pavilion, SaaStr, etc."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine all inputs for Claude prompt\nconst calendar = $('Read Content Calendar').all().map(i => i.json);\nconst ideas = $('Get Content Ideas from ClickUp').first().json;\nconst rss = $('Fetch Industry RSS').all().map(i => i.json);\n\n// Find this week's row in content calendar\nconst now = new Date();\nconst weekStart = new Date(now);\nweekStart.setDate(now.getDate() - now.getDay());\nconst weekKey = weekStart.toLocaleDateString('en-US');\n\nconst thisWeek = calendar.find(row => {\n  const rowDate = new Date(row['Week Of']);\n  return Math.abs(rowDate - weekStart) < 7 * 24 * 60 * 60 * 1000;\n}) || {};\n\n// Format content ideas\nconst ideaList = (ideas.tasks || []).map(t => `- ${t.name}: ${t.description || ''}`).join('\\n') || 'No pending ideas';\n\n// Format RSS headlines\nconst newsItems = rss.slice(0, 10).map(item => `- ${item.title}: ${item.link}`).join('\\n') || 'No recent news';\n\nconst weekOf = weekStart.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });\n\nreturn [{\n  json: {\n    system_prompt: `You are a ghostwriter for a solo RevOps consultant who works with B2B SaaS companies ($10-100M). You write LinkedIn posts that build authority, generate inbound leads, and spark conversations.\\n\\n**Voice & Tone:**\\n- First person, conversational but knowledgeable\\n- Opinionated — take a stance, don't hedge everything\\n- Practical — every post should teach something or challenge an assumption\\n- Anti-corporate — no buzzword soup, no \"thrilled to announce\", no humble brags\\n- Short sentences. Punchy. Occasional one-word paragraphs for emphasis.\\n- Use \"you\" often — talk TO the reader\\n\\n**Format rules:**\\n- Hook must stop the scroll (first 2 lines visible before \"see more\")\\n- Line breaks liberally\\n- 150-300 words\\n- End with a question or call-to-discussion\\n- 3-5 relevant hashtags\\n- No emojis in main text\\n\\n**NEVER:** \"I'm excited to share...\", humble brags, vague motivational content, anything identifying a specific client`,\n    user_prompt: `Generate 5 LinkedIn post drafts for this week.\\n\\n**Week Of:** ${weekOf}\\n**Content Calendar Theme:** ${thisWeek['Notes'] || 'No specific theme'}\\n**Calendar Requirements:** Monday: ${thisWeek['Monday Topic'] || 'open'}, Wednesday: ${thisWeek['Wednesday Topic'] || 'open'}, Friday: ${thisWeek['Friday Topic'] || 'open'}\\n\\n**Content Ideas Backlog:**\\n${ideaList}\\n\\n**Industry News:**\\n${newsItems}\\n\\n---\\n\\nGenerate 5 posts (2 Tactical Tips, 1 Case Study anonymized, 1 Contrarian Take, 1 Data Insight). Posts 1-3 are for Mon/Wed/Fri publishing. Posts 4-5 are backups.\\n\\nFor each post provide JSON with: post_number, category, hook (first 2 lines), body (full 150-300 word text), hashtags (array), publishing_notes, confidence (high/medium), alternative_hook.\\n\\nReturn as a JSON array of 5 post objects.`,\n    model: 'sonnet',\n    workflow_name: 'linkedin-content-generator',\n    client_name: 'Self',\n    purpose: 'LinkedIn content generation',\n    week_of: weekOf\n  }\n}];"
+      },
+      "id": "build-prompt",
+      "name": "Build Content Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 400]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" }
+      },
+      "id": "claude-generate",
+      "name": "Claude: Generate Posts",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format posts into a Google Doc for review\nconst response = $input.all()[0].json;\nconst posts = Array.isArray(response.parsed_content) ? response.parsed_content : [response.parsed_content];\nconst weekOf = $('Build Content Prompt').first().json.week_of;\n\nlet docContent = `# LinkedIn Drafts — Week of ${weekOf}\\n\\n`;\ndocContent += `*Generated: ${new Date().toLocaleString()}*\\n\\n---\\n\\n`;\n\nfor (const post of posts) {\n  docContent += `## Post ${post.post_number}: ${post.category}\\n`;\n  docContent += `**Confidence:** ${post.confidence}\\n\\n`;\n  docContent += `**Hook:** ${post.hook}\\n\\n`;\n  docContent += `---\\n${post.body}\\n\\n`;\n  docContent += `${(post.hashtags || []).join(' ')}\\n\\n`;\n  docContent += `**Alt Hook:** ${post.alternative_hook}\\n`;\n  docContent += `**Notes:** ${post.publishing_notes}\\n\\n`;\n  docContent += `- [ ] **APPROVED FOR PUBLISHING**\\n\\n`;\n  docContent += `---\\n\\n`;\n}\n\nreturn [{ json: { doc_content: docContent, post_count: posts.length, week_of: weekOf } }];"
+      },
+      "id": "format-doc",
+      "name": "Format as Google Doc",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 400]
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "operation": "create",
+        "title": "=LinkedIn Drafts — Week of {{ $json.week_of }}",
+        "content": "={{ $json.doc_content }}"
+      },
+      "id": "create-doc",
+      "name": "Create Drafts Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 1,
+      "position": [1350, 400],
+      "credentials": { "googleDocsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Docs" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=📝 {{ $('Format as Google Doc').first().json.post_count }} LinkedIn Drafts Ready — Week of {{ $('Format as Google Doc').first().json.week_of }}",
+        "message": "=<p>Your LinkedIn post drafts for this week are ready for review.</p>\n<p><a href='{{ $json.documentId || \"Check Google Docs\" }}'>Open Drafts Document</a></p>\n<p>Mark posts as APPROVED in the doc. The publisher workflow will post approved content on Mon/Wed/Fri at 8:30 AM.</p>"
+      },
+      "id": "notify",
+      "name": "Notify: Drafts Ready",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1570, 400],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    }
+  ],
+  "connections": {
+    "Sunday 8:00 AM": {
+      "main": [[
+        { "node": "Read Content Calendar", "type": "main", "index": 0 },
+        { "node": "Get Content Ideas from ClickUp", "type": "main", "index": 0 },
+        { "node": "Fetch Industry RSS", "type": "main", "index": 0 }
+      ]]
+    },
+    "Read Content Calendar": { "main": [[{ "node": "Build Content Prompt", "type": "main", "index": 0 }]] },
+    "Get Content Ideas from ClickUp": { "main": [[{ "node": "Build Content Prompt", "type": "main", "index": 0 }]] },
+    "Fetch Industry RSS": { "main": [[{ "node": "Build Content Prompt", "type": "main", "index": 0 }]] },
+    "Build Content Prompt": { "main": [[{ "node": "Claude: Generate Posts", "type": "main", "index": 0 }]] },
+    "Claude: Generate Posts": { "main": [[{ "node": "Format as Google Doc", "type": "main", "index": 0 }]] },
+    "Format as Google Doc": { "main": [[{ "node": "Create Drafts Doc", "type": "main", "index": 0 }]] },
+    "Create Drafts Doc": { "main": [[{ "node": "Notify: Drafts Ready", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase3" }, { "name": "linkedin" }]
+}

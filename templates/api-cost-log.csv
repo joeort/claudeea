@@ -1,0 +1,2 @@
+Timestamp,Workflow Name,Model,Input Tokens,Output Tokens,Input Cost,Output Cost,Total Cost,Client Name,Purpose
+2025-01-01 09:00:00,call-intelligence,claude-sonnet-4-6,2500,800,0.0075,0.0040,0.0115,Acme Corp,Meeting notes extraction

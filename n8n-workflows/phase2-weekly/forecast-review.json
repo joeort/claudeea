@@ -1,0 +1,158 @@
+{
+  "name": "forecast-review",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 5" }] }
+      },
+      "id": "cron-trigger",
+      "name": "Friday 9:00 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300],
+      "notes": "Runs at 9 AM Friday — BEFORE the weekly update workflow at 11 AM"
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "filters": { "conditions": [{ "lookupColumn": "Status", "lookupValue": "Active" }] }
+      },
+      "id": "get-active-clients",
+      "name": "Get Active Clients",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [470, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter to only clients with a forecast sheet\nreturn $input.all().filter(item => item.json['Forecast Sheet ID'] && item.json['Forecast Sheet ID'] !== '');"
+      },
+      "id": "filter-forecast-clients",
+      "name": "Filter: Has Forecast Sheet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $json['Forecast Sheet ID'] }}" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Pipeline" },
+        "options": {}
+      },
+      "id": "read-pipeline-data",
+      "name": "Read Pipeline Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [910, 200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } },
+      "notes": "Reads the 'Pipeline' tab. Adjust sheet name to match your forecast template."
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $json['Forecast Sheet ID'] }}" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Last Week Snapshot" },
+        "options": {}
+      },
+      "id": "read-last-week",
+      "name": "Read Last Week Snapshot",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [910, 400],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate pipeline metrics and WoW changes\nconst client = $('Filter: Has Forecast Sheet').first().json;\nconst pipelineData = $('Read Pipeline Data').all().map(i => i.json);\nconst lastWeekData = $('Read Last Week Snapshot').all().map(i => i.json);\n\n// Aggregate by stage\nconst stages = {};\nfor (const deal of pipelineData) {\n  const stage = deal['Stage'] || 'Unknown';\n  if (!stages[stage]) stages[stage] = { count: 0, value: 0, deals: [] };\n  stages[stage].count++;\n  stages[stage].value += parseFloat(deal['Value'] || 0);\n  stages[stage].deals.push(deal);\n}\n\n// Build pipeline summary\nlet pipelineSummary = 'Stage | Deal Count | Total Value\\n';\nlet totalValue = 0;\nfor (const [stage, data] of Object.entries(stages)) {\n  pipelineSummary += `${stage} | ${data.count} | $${data.value.toLocaleString()}\\n`;\n  totalValue += data.value;\n}\n\n// Simple WoW comparison\nconst lastWeekTotal = lastWeekData.reduce((sum, d) => sum + parseFloat(d['Value'] || 0), 0);\nconst wowChange = totalValue - lastWeekTotal;\n\nconst analysisDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });\n\nreturn [{\n  json: {\n    system_prompt: `You are an expert B2B SaaS revenue analyst working as a RevOps consultant. You analyze sales pipeline and forecast data to deliver sharp, actionable insights that help sales leaders make better decisions.\\n\\nYour analysis style:\\n- Data-first: every claim backed by specific numbers\\n- Pattern-aware: spot trends humans miss\\n- Action-oriented: every insight ends with \"so what\" and \"do what\"\\n- Calibrated confidence: distinguish between strong signals and weak ones\\n- Executive-friendly: lead with the headline, details below`,\n    user_prompt: `Analyze this client's pipeline and forecast data and generate an executive review.\\n\\n**Client:** ${client['Client Name']}\\n**Analysis Date:** ${analysisDate}\\n\\n**Current Pipeline by Stage:**\\n${pipelineSummary}\\n**Total Pipeline:** $${totalValue.toLocaleString()}\\n\\n**Week-over-Week Change:** $${wowChange.toLocaleString()} (${wowChange >= 0 ? '+' : ''}${((wowChange / (lastWeekTotal || 1)) * 100).toFixed(1)}%)\\n\\n**Last Week Total Pipeline:** $${lastWeekTotal.toLocaleString()}\\n\\n---\\n\\nGenerate a comprehensive forecast review with: Executive Summary (3-5 sentences), Pipeline Health Scorecard (table with Coverage Ratio, Weighted Pipeline, Velocity, Conversion Rate, New Pipe Created — each rated green/yellow/red), Top 3 Insights (each with What, Why it matters, Recommended action), Deal-Level Alerts (at risk, accelerate, qualify out), Forecast Call (best/most likely/worst case with confidence), Recommended Actions (prioritized), and Positive Signals.`,\n    model: 'opus',\n    workflow_name: 'forecast-review',\n    client_name: client['Client Name'],\n    purpose: 'Forecast analysis',\n    client: client,\n    pipeline_data: pipelineData,\n    total_value: totalValue\n  }\n}];"
+      },
+      "id": "calculate-metrics",
+      "name": "Calculate Pipeline Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" }
+      },
+      "id": "claude-analyze",
+      "name": "Claude (Opus): Analyze Forecast",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Calculate Pipeline Metrics').first().json.client['Forecast Sheet ID'] }}" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "=Analysis - {{ new Date().toLocaleDateString('en-US') }}" },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        },
+        "options": {}
+      },
+      "id": "write-analysis-tab",
+      "name": "Write Analysis Tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1570, 200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } },
+      "notes": "Creates a new tab with the analysis. You may need to format this manually or use a code node to structure the data."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Calculate Pipeline Metrics').first().json.client['Primary Contact Email'] }}",
+        "subject": "={{ $('Calculate Pipeline Metrics').first().json.client['Client Name'] }} — Pipeline & Forecast Review ({{ new Date().toLocaleDateString('en-US') }})",
+        "message": "={{ $json.content }}",
+        "options": {
+          "ccList": "={{ $('Calculate Pipeline Metrics').first().json.client['CC Emails']?.replace(';', ',') || '' }}"
+        }
+      },
+      "id": "create-forecast-draft",
+      "name": "Create Forecast Email Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1570, 400],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } },
+      "notes": "Set operation to 'createDraft' in n8n UI"
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Calculate Pipeline Metrics').first().json.client['Forecast Sheet ID'] }}" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Last Week Snapshot" },
+        "columns": { "mappingMode": "autoMapInputData" },
+        "options": { "cellUpdate": "clear" }
+      },
+      "id": "snapshot-current",
+      "name": "Snapshot Current Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1790, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } },
+      "notes": "Overwrites 'Last Week Snapshot' with current data for next week's comparison"
+    }
+  ],
+  "connections": {
+    "Friday 9:00 AM": { "main": [[{ "node": "Get Active Clients", "type": "main", "index": 0 }]] },
+    "Get Active Clients": { "main": [[{ "node": "Filter: Has Forecast Sheet", "type": "main", "index": 0 }]] },
+    "Filter: Has Forecast Sheet": {
+      "main": [[
+        { "node": "Read Pipeline Data", "type": "main", "index": 0 },
+        { "node": "Read Last Week Snapshot", "type": "main", "index": 0 }
+      ]]
+    },
+    "Read Pipeline Data": { "main": [[{ "node": "Calculate Pipeline Metrics", "type": "main", "index": 0 }]] },
+    "Read Last Week Snapshot": { "main": [[{ "node": "Calculate Pipeline Metrics", "type": "main", "index": 0 }]] },
+    "Calculate Pipeline Metrics": { "main": [[{ "node": "Claude (Opus): Analyze Forecast", "type": "main", "index": 0 }]] },
+    "Claude (Opus): Analyze Forecast": {
+      "main": [[
+        { "node": "Write Analysis Tab", "type": "main", "index": 0 },
+        { "node": "Create Forecast Email Draft", "type": "main", "index": 0 }
+      ]]
+    },
+    "Write Analysis Tab": { "main": [[{ "node": "Snapshot Current Data", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase2" }, { "name": "forecast" }]
+}

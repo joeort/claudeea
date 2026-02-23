@@ -1,0 +1,174 @@
+{
+  "name": "client-onboarding",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "onboard-client",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Trigger: New Client Won",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "notes": "Manually triggered via webhook or when HubSpot deal moves to 'Won'. Expects: company_name, primary_contact, contact_email, contact_title, arr, sales_team_size, crm, scope_tier, duration, start_date, challenges, agreed_scope"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize incoming client data\nconst body = $input.all()[0].json.body || $input.all()[0].json;\nreturn [{ json: { ...body, received_at: new Date().toISOString() } }];"
+      },
+      "id": "normalize",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.clickup.com/api/v2/team/CONFIGURE_ME_TEAM_ID/space",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.company_name, multiple_assignees: true, features: { due_dates: { enabled: true }, time_tracking: { enabled: true }, tags: { enabled: true }, priorities: { enabled: true } } }) }}"
+      },
+      "id": "create-clickup-space",
+      "name": "Create ClickUp Space",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 100],
+      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "ClickUp API Key" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/me/drive/root:/Clients/{{ $json.company_name }}:/children",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: 'Deliverables', folder: {}, '@microsoft.graph.conflictBehavior': 'rename' }) }}"
+      },
+      "id": "create-onedrive-folder",
+      "name": "Create OneDrive Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300],
+      "credentials": { "oAuth2Api": { "id": "CONFIGURE_ME", "name": "Microsoft Graph" } },
+      "notes": "Creates client folder in OneDrive. Also creates subfolders: Deliverables, Meeting Notes, Reports"
+    },
+    {
+      "parameters": {
+        "resource": "spreadsheet",
+        "operation": "create",
+        "title": "={{ $json.company_name }} — Forecast & Pipeline",
+        "options": {}
+      },
+      "id": "create-forecast-sheet",
+      "name": "Create Forecast Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [690, 500],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } },
+      "notes": "Creates forecast spreadsheet from template. Add tabs: Pipeline, Targets, Historical, Last Week Snapshot"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wait for all parallel tasks and prepare roster entry\nconst input = $('Normalize Input').first().json;\nconst clickupSpace = $('Create ClickUp Space').first().json;\nconst onedrive = $('Create OneDrive Folder').first().json;\nconst forecastSheet = $('Create Forecast Sheet').first().json;\n\nreturn [{\n  json: {\n    'Client Name': input.company_name,\n    'Status': 'Active',\n    'ClickUp Space ID': clickupSpace.id || 'CONFIGURE',\n    'Google Drive Folder ID': 'CONFIGURE',\n    'OneDrive Folder Path': `/Clients/${input.company_name}`,\n    'Primary Contact Email': input.contact_email,\n    'Primary Contact Name': input.primary_contact,\n    'CC Emails': '',\n    'Forecast Sheet ID': forecastSheet.spreadsheetId || 'CONFIGURE',\n    'Meeting Day': 'CONFIGURE',\n    'Meeting Time': 'CONFIGURE',\n    'Update Preference': 'detailed',\n    'Retainer Hours/Month': '',\n    'Hourly Rate': '',\n    'Toggl Project ID': '',\n    'HubSpot Deal ID': '',\n    'LinkedIn Company URL': '',\n    'Slack Channel': '',\n    'Notes': `${input.scope_tier} engagement, ${input.duration}. ARR: $${input.arr}`,\n    original_input: input\n  }\n}];"
+      },
+      "id": "prepare-roster-entry",
+      "name": "Prepare Roster Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "columns": { "mappingMode": "autoMapInputData" }
+      },
+      "id": "add-to-roster",
+      "name": "Add to Client Roster",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1130, 200],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" },
+        "fields": {
+          "values": [
+            { "name": "system_prompt", "value": "You are a RevOps consultant's operations assistant. You help generate onboarding materials for new B2B SaaS clients. Your outputs should be professional, thorough, and set clear expectations for the engagement." },
+            { "name": "user_prompt", "value": "=Generate onboarding materials for a new client.\n\nCompany: {{ $json.original_input.company_name }}\nContact: {{ $json.original_input.primary_contact }} ({{ $json.original_input.contact_title }})\nARR: ${{ $json.original_input.arr }}\nSales Team: {{ $json.original_input.sales_team_size }}\nCRM: {{ $json.original_input.crm }}\nScope: {{ $json.original_input.scope_tier }}\nDuration: {{ $json.original_input.duration }}\nStart: {{ $json.original_input.start_date }}\nChallenges: {{ $json.original_input.challenges }}\n\nGenerate: 1) Welcome email (professional, warm, lists what you need from them), 2) Onboarding checklist (CRM access, data exports, stakeholder intros, etc.), 3) First 30 days task list (Discovery/Assessment/Recommendations/Execution phases with specific tasks, owners, and estimates), 4) Kickoff meeting agenda (90 min). Format as markdown sections." },
+            { "name": "model", "value": "sonnet" },
+            { "name": "workflow_name", "value": "client-onboarding" },
+            { "name": "client_name", "value": "={{ $json.original_input.company_name }}" },
+            { "name": "purpose", "value": "Onboarding materials generation" }
+          ]
+        }
+      },
+      "id": "claude-onboarding",
+      "name": "Claude: Generate Onboarding Materials",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1130, 400]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Prepare Roster Entry').first().json['Primary Contact Email'] }}",
+        "subject": "=Welcome! Kicking off our RevOps engagement — {{ $('Prepare Roster Entry').first().json['Client Name'] }}",
+        "message": "={{ $json.content }}",
+        "options": {}
+      },
+      "id": "welcome-email-draft",
+      "name": "Create Welcome Email Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1350, 400],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } },
+      "notes": "Set to createDraft — review before sending"
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=✅ Client Onboarded: {{ $('Prepare Roster Entry').first().json['Client Name'] }}",
+        "message": "=<h2>New Client Setup Complete</h2>\n<ul>\n<li>ClickUp Space: Created</li>\n<li>OneDrive Folder: Created</li>\n<li>Forecast Sheet: Created</li>\n<li>Client Roster: Updated</li>\n<li>Welcome email draft: Ready in Gmail</li>\n</ul>\n<p><strong>Next:</strong> Review welcome email, configure meeting day/time in Roster, set up Toggl project.</p>"
+      },
+      "id": "notify-complete",
+      "name": "Notify: Onboarding Complete",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1570, 300],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    }
+  ],
+  "connections": {
+    "Trigger: New Client Won": { "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]] },
+    "Normalize Input": {
+      "main": [[
+        { "node": "Create ClickUp Space", "type": "main", "index": 0 },
+        { "node": "Create OneDrive Folder", "type": "main", "index": 0 },
+        { "node": "Create Forecast Sheet", "type": "main", "index": 0 }
+      ]]
+    },
+    "Create ClickUp Space": { "main": [[{ "node": "Prepare Roster Entry", "type": "main", "index": 0 }]] },
+    "Create OneDrive Folder": { "main": [[{ "node": "Prepare Roster Entry", "type": "main", "index": 0 }]] },
+    "Create Forecast Sheet": { "main": [[{ "node": "Prepare Roster Entry", "type": "main", "index": 0 }]] },
+    "Prepare Roster Entry": {
+      "main": [[
+        { "node": "Add to Client Roster", "type": "main", "index": 0 },
+        { "node": "Claude: Generate Onboarding Materials", "type": "main", "index": 0 }
+      ]]
+    },
+    "Claude: Generate Onboarding Materials": { "main": [[{ "node": "Create Welcome Email Draft", "type": "main", "index": 0 }]] },
+    "Add to Client Roster": { "main": [[{ "node": "Notify: Onboarding Complete", "type": "main", "index": 0 }]] },
+    "Create Welcome Email Draft": { "main": [[{ "node": "Notify: Onboarding Complete", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "phase4" }, { "name": "onboarding" }]
+}

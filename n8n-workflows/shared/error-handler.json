@@ -1,0 +1,99 @@
+{
+  "name": "error-handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-input",
+      "name": "Sub-Workflow Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "notes": "Receives: workflow_name, node_name, error_type, error_message, client_name, severity (critical|medium|low)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.all()[0].json;\nreturn [{\n  json: {\n    ...input,\n    timestamp: new Date().toISOString(),\n    resolved: 'No',\n    resolution_notes: ''\n  }\n}];"
+      },
+      "id": "prepare-log",
+      "name": "Prepare Log Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_ERRORS_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $json.timestamp }}",
+            "Workflow Name": "={{ $json.workflow_name }}",
+            "Node Name": "={{ $json.node_name }}",
+            "Error Type": "={{ $json.error_type }}",
+            "Error Message": "={{ $json.error_message }}",
+            "Client Name": "={{ $json.client_name }}",
+            "Severity": "={{ $json.severity }}",
+            "Resolved": "={{ $json.resolved }}",
+            "Resolution Notes": "={{ $json.resolution_notes }}"
+          }
+        }
+      },
+      "id": "log-to-sheet",
+      "name": "Log to Errors Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [690, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            { "leftValue": "={{ $json.severity }}", "rightValue": "critical", "operator": { "type": "string", "operation": "equals" } }
+          ]
+        }
+      },
+      "id": "check-severity",
+      "name": "Is Critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "CONFIGURE_ME_YOUR_EMAIL",
+        "subject": "=🚨 n8n CRITICAL: {{ $json.workflow_name }} failed",
+        "message": "=<h2>Automation Failure Alert</h2>\n<p><strong>Workflow:</strong> {{ $json.workflow_name }}</p>\n<p><strong>Node:</strong> {{ $json.node_name }}</p>\n<p><strong>Error:</strong> {{ $json.error_message }}</p>\n<p><strong>Client:</strong> {{ $json.client_name || 'N/A' }}</p>\n<p><strong>Time:</strong> {{ $json.timestamp }}</p>\n<hr>\n<p>Check the <a href='CONFIGURE_ME_N8N_URL'>n8n dashboard</a> for details.</p>"
+      },
+      "id": "send-alert",
+      "name": "Send Email Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1130, 200],
+      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+    },
+    {
+      "parameters": {},
+      "id": "done",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1130, 400]
+    }
+  ],
+  "connections": {
+    "Sub-Workflow Input": { "main": [[{ "node": "Prepare Log Entry", "type": "main", "index": 0 }]] },
+    "Prepare Log Entry": { "main": [[{ "node": "Log to Errors Sheet", "type": "main", "index": 0 }]] },
+    "Log to Errors Sheet": { "main": [[{ "node": "Is Critical?", "type": "main", "index": 0 }]] },
+    "Is Critical?": {
+      "main": [
+        [{ "node": "Send Email Alert", "type": "main", "index": 0 }],
+        [{ "node": "Done", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "shared" }, { "name": "utility" }]
+}
