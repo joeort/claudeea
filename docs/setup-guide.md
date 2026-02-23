@@ -4,7 +4,8 @@
 
 - Self-hosted n8n instance (v1.20+)
 - Google Workspace account (Gmail, Calendar, Sheets, Docs, Drive)
-- Anthropic API key
+- Google AI Studio API key (FREE — for Gemini)
+- Anthropic API key (only needed for forecast review + proposals)
 - ClickUp account with API access
 - Toggl Track account with API token
 - HubSpot account (free tier works)
@@ -15,14 +16,36 @@
 
 ---
 
+## Cost Optimization — Model Routing
+
+Most workflows use **Gemini free tier** ($0). Claude is only used for 2 high-value workflows.
+
+| Model | Provider | Cost | Used By |
+|-------|----------|------|---------|
+| Gemini 2.0 Flash | Google | FREE (15 RPM, 1M tokens/day) | Meeting prep, weekly updates, LinkedIn, lead scoring, health scoring, onboarding |
+| Gemini 2.5 Pro | Google | FREE (5 RPM, lower limits) | Call intelligence, Substack newsletter |
+| Claude Opus | Anthropic | $15/$75 per MTok | Forecast review, proposals (highest-value deliverables only) |
+| Claude Sonnet | Anthropic | $3/$15 per MTok | Available as fallback — not used by default |
+
+**Estimated monthly cost:** ~$5-15/month (only the 2 Opus workflows cost money)
+
+---
+
 ## Step 1: API Credentials
 
-### Anthropic (Claude API)
+### Google Gemini API (FREE — primary AI provider)
+1. Go to https://aistudio.google.com/apikey
+2. Create an API key (free, no billing required)
+3. In the `ai-api-wrapper` workflow, replace `CONFIGURE_ME_GEMINI_API_KEY` in the Gemini API Call node URL
+4. Free tier limits: Gemini Flash = 15 requests/min, 1M tokens/day; Gemini Pro = 5 requests/min
+
+### Anthropic Claude API (paid — only for forecast review + proposals)
 1. Go to https://console.anthropic.com/
 2. Create an API key
 3. In n8n: create an **HTTP Header Auth** credential
    - Header Name: `x-api-key`
    - Header Value: `your-api-key`
+4. Set a budget alert — with only 2 workflows using this, costs should be <$20/month
 
 ### Google Workspace
 1. Go to Google Cloud Console → APIs & Services → Credentials
@@ -138,6 +161,7 @@ After importing each workflow, search for `CONFIGURE_ME` in the JSON and replace
 
 | Placeholder | Where to Find |
 |------------|---------------|
+| `CONFIGURE_ME_GEMINI_API_KEY` | https://aistudio.google.com/apikey |
 | `CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID` | Google Sheet URL |
 | `CONFIGURE_ME_COST_LOG_SHEET_ID` | Google Sheet URL |
 | `CONFIGURE_ME_ERRORS_SHEET_ID` | Google Sheet URL |

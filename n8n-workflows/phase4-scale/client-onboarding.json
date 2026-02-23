@@ -105,7 +105,7 @@
           "values": [
             { "name": "system_prompt", "value": "You are a RevOps consultant's operations assistant. You help generate onboarding materials for new B2B SaaS clients. Your outputs should be professional, thorough, and set clear expectations for the engagement." },
             { "name": "user_prompt", "value": "=Generate onboarding materials for a new client.\n\nCompany: {{ $json.original_input.company_name }}\nContact: {{ $json.original_input.primary_contact }} ({{ $json.original_input.contact_title }})\nARR: ${{ $json.original_input.arr }}\nSales Team: {{ $json.original_input.sales_team_size }}\nCRM: {{ $json.original_input.crm }}\nScope: {{ $json.original_input.scope_tier }}\nDuration: {{ $json.original_input.duration }}\nStart: {{ $json.original_input.start_date }}\nChallenges: {{ $json.original_input.challenges }}\n\nGenerate: 1) Welcome email (professional, warm, lists what you need from them), 2) Onboarding checklist (CRM access, data exports, stakeholder intros, etc.), 3) First 30 days task list (Discovery/Assessment/Recommendations/Execution phases with specific tasks, owners, and estimates), 4) Kickoff meeting agenda (90 min). Format as markdown sections." },
-            { "name": "model", "value": "sonnet" },
+            { "name": "model", "value": "gemini-free" },
             { "name": "workflow_name", "value": "client-onboarding" },
             { "name": "client_name", "value": "={{ $json.original_input.company_name }}" },
             { "name": "purpose", "value": "Onboarding materials generation" }

@@ -1,6 +1,6 @@
 # LinkedIn Content Engine — Claude Prompt Template
 
-## Model: claude-sonnet-4-6
+## Model: gemini-2.0-flash (free tier)
 
 ---
 

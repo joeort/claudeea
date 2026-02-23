@@ -68,7 +68,7 @@
           "values": [
             { "name": "system_prompt", "value": "You are a senior RevOps consultant's AI assistant. You analyze meeting transcripts and summaries from B2B SaaS client calls to extract actionable intelligence.\n\nYour analysis must be:\n- Exhaustive on action items (Fathom's auto-detection misses ~30% of implicit commitments)\n- Clear on ownership (consultant vs. client vs. third party)\n- Specific on deadlines (extract explicit dates; infer reasonable deadlines for items without them)\n- Alert to risk signals (scope creep, stakeholder misalignment, budget concerns, timeline pressure)\n\nOutput format must be structured JSON for downstream automation." },
             { "name": "user_prompt", "value": "=Analyze this meeting summary and extract all actionable intelligence.\n\n**Meeting Info:**\n- Title: {{ $json.meeting_title }}\n- Date: {{ $json.meeting_date }}\n- Attendees: {{ $json.attendees }}\n- Client: {{ $json.client_name }}\n\n**Fathom Summary:**\n{{ $json.fathom_summary }}\n\n**Fathom Action Items (auto-detected):**\n{{ $json.fathom_action_items }}\n\n---\n\nRespond with JSON containing: executive_summary, action_items (array with action, owner, priority, deadline, category, context, clickup_list), risk_flags (array with type, severity, description, recommended_action), key_decisions (array), next_meeting_suggestions (array), sentiment, engagement_health_delta." },
-            { "name": "model", "value": "sonnet" },
+            { "name": "model", "value": "gemini-pro" },
             { "name": "workflow_name", "value": "call-intelligence" },
             { "name": "client_name", "value": "={{ $json.client_name }}" },
             { "name": "purpose", "value": "Meeting notes extraction" }

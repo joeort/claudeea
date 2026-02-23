@@ -1,6 +1,6 @@
 # Inbound Lead Scoring — Claude Prompt Template
 
-## Model: claude-sonnet-4-6 (fast, cost-effective for high volume)
+## Model: gemini-2.0-flash (free tier — fast, zero cost for high volume)
 
 ---
 

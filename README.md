@@ -73,10 +73,21 @@ n8n-powered automation system for a solo RevOps consultant. Saves 15-20 hours/we
 | 3. Content & Growth (Week 5-6) | LinkedIn, Substack, Inbound Leads | 3-5 hrs + growth |
 | 4. Scale (Week 7-8) | Onboarding, Proposals, Health Scoring | Per-event savings |
 
+## Cost Strategy
+
+Most workflows run on **Gemini free tier** ($0). Claude Opus is reserved for only 2 high-value deliverables.
+
+| Tier | Model | Cost | Workflows |
+|------|-------|------|-----------|
+| Free | Gemini 2.0 Flash | $0 | Meeting prep, weekly updates, LinkedIn, lead scoring, health scoring, onboarding |
+| Free | Gemini 2.5 Pro | $0 | Call intelligence, Substack newsletter |
+| Paid | Claude Opus | ~$5-15/mo | Forecast review, proposals |
+
 ## Architecture
 
 - **n8n** — Workflow orchestration
-- **Claude API** — Intelligence layer (Sonnet for drafts, Opus for analysis)
+- **Gemini API** — Primary intelligence layer (FREE tier for most workflows)
+- **Claude API** — Premium intelligence (Opus only, for forecast reviews + proposals)
 - **Google Sheets** — Config database (Client Roster) and logging
 - **ClickUp** — Task management
 - **Gmail** — Email drafts (human-in-the-loop)

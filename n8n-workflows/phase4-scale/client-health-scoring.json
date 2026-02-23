@@ -43,7 +43,7 @@
           "values": [
             { "name": "system_prompt", "value": "You are a client success analyst for a RevOps consulting practice. You evaluate client engagement health based on quantitative signals and provide early warning when relationships may be at risk. Be direct and specific." },
             { "name": "user_prompt", "value": "=Evaluate health for client: {{ $json.client_name }}\n\nMetrics: Meetings {{ $json.meetings_held }}/{{ $json.meetings_scheduled }}, Response time: {{ $json.avg_response_time }} days, Tasks on time: {{ $json.tasks_on_time }}/{{ $json.tasks_total }}, Client-blocked items: {{ $json.client_blocked_count }}, Days since interaction: {{ $json.days_since_interaction }}, Waiting items: {{ $json.waiting_items_count }} (avg age: {{ $json.waiting_items_avg_age }} days)\n\nProvide JSON: { health_score (0-100), score_breakdown (object with factors), trend (improving/stable/declining), risk_flags (array), recommended_actions (array), talking_points (array if score < 70) }" },
-            { "name": "model", "value": "sonnet" },
+            { "name": "model", "value": "gemini-free" },
             { "name": "workflow_name", "value": "client-health-scoring" },
             { "name": "client_name", "value": "={{ $json.client_name }}" },
             { "name": "purpose", "value": "Health scoring" }

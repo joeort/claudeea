@@ -1,6 +1,6 @@
 # Call Intelligence — Claude Prompt Template
 
-## Model: claude-sonnet-4-6 (default) | claude-opus-4-6 (for complex/strategic calls)
+## Model: gemini-2.5-pro (free tier) | claude-opus-4-6 (fallback for complex/strategic calls)
 
 ---
 

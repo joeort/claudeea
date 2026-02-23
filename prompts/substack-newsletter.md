@@ -1,6 +1,6 @@
 # Substack Weekly Newsletter — Claude Prompt Template
 
-## Model: claude-opus-4-6 (longer-form, needs highest quality)
+## Model: gemini-2.5-pro (free tier — deep analysis without Opus cost)
 
 ---
 

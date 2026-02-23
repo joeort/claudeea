@@ -1,5 +1,5 @@
 {
-  "name": "claude-api-wrapper",
+  "name": "ai-api-wrapper",
   "nodes": [
     {
       "parameters": {},
@@ -8,17 +8,59 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
       "position": [250, 300],
-      "notes": "Receives: system_prompt, user_prompt, model (sonnet|opus), workflow_name, client_name, purpose"
+      "notes": "Receives: system_prompt, user_prompt, model (gemini-free|sonnet|opus), workflow_name, client_name, purpose. Default: gemini-free"
     },
     {
       "parameters": {
-        "jsCode": "// Route model preference to correct model ID\nconst input = $input.all()[0].json;\nconst modelMap = {\n  'sonnet': 'claude-sonnet-4-6',\n  'opus': 'claude-opus-4-6',\n  'haiku': 'claude-haiku-4-5-20251001'\n};\n\nconst model = modelMap[input.model] || modelMap['sonnet'];\nconst maxTokens = input.model === 'opus' ? 8192 : 4096;\n\nreturn [{\n  json: {\n    ...input,\n    model_id: model,\n    max_tokens: maxTokens,\n    retry_count: 0,\n    max_retries: 3\n  }\n}];"
+        "jsCode": "// Multi-provider model router\n// Priority: Gemini free tier → Claude Sonnet → Claude Opus\nconst input = $input.all()[0].json;\n\nconst modelMap = {\n  // FREE TIER — use for most tasks\n  'gemini-free': {\n    provider: 'google',\n    model_id: 'gemini-2.0-flash',\n    max_tokens: 8192,\n    cost_per_1k_input: 0,\n    cost_per_1k_output: 0\n  },\n  'gemini-pro': {\n    provider: 'google',\n    model_id: 'gemini-2.5-pro-preview-05-06',\n    max_tokens: 8192,\n    cost_per_1k_input: 0,\n    cost_per_1k_output: 0\n  },\n  // PAID — only for high-value analytical work\n  'sonnet': {\n    provider: 'anthropic',\n    model_id: 'claude-sonnet-4-6',\n    max_tokens: 4096,\n    cost_per_1k_input: 0.003,\n    cost_per_1k_output: 0.015\n  },\n  'opus': {\n    provider: 'anthropic',\n    model_id: 'claude-opus-4-6',\n    max_tokens: 8192,\n    cost_per_1k_input: 0.015,\n    cost_per_1k_output: 0.075\n  }\n};\n\n// Default to gemini-free if no model specified\nconst modelKey = input.model || 'gemini-free';\nconst config = modelMap[modelKey] || modelMap['gemini-free'];\n\nreturn [{\n  json: {\n    ...input,\n    provider: config.provider,\n    model_id: config.model_id,\n    max_tokens: config.max_tokens,\n    cost_per_1k_input: config.cost_per_1k_input,\n    cost_per_1k_output: config.cost_per_1k_output,\n    model_key: modelKey,\n    retry_count: 0,\n    max_retries: 3\n  }\n}];"
       },
       "id": "model-router",
       "name": "Model Router",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            { "leftValue": "={{ $json.provider }}", "rightValue": "google", "operator": { "type": "string", "operation": "equals" } }
+          ]
+        }
+      },
+      "id": "provider-switch",
+      "name": "Which Provider?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [690, 300],
+      "notes": "Routes to Google Gemini (free) or Anthropic Claude (paid)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.model_id }}:generateContent?key=CONFIGURE_ME_GEMINI_API_KEY",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ system_instruction: { parts: [{ text: $json.system_prompt }] }, contents: [{ parts: [{ text: $json.user_prompt }] }], generationConfig: { maxOutputTokens: $json.max_tokens, temperature: 0.7 } }) }}",
+        "options": {
+          "timeout": 120000,
+          "response": { "response": { "fullResponse": true } }
+        }
+      },
+      "id": "gemini-api-call",
+      "name": "Gemini API Call (FREE)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 200],
+      "notes": "Google Gemini API — FREE tier: 15 RPM / 1M tokens/day for Flash, 5 RPM for Pro. Get key at https://aistudio.google.com/apikey",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -42,35 +84,55 @@
         }
       },
       "id": "claude-api-call",
-      "name": "Claude API Call",
+      "name": "Claude API Call (PAID)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [690, 300],
+      "position": [910, 400],
       "credentials": {
         "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "Anthropic API Key" }
       },
-      "notes": "Configure credential: Header Name = 'x-api-key', Header Value = your Anthropic API key",
+      "notes": "Only used for high-value tasks: forecast review, proposals, newsletters",
       "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "jsCode": "// Parse successful response and extract usage for cost logging\nconst response = $input.all()[0].json;\nconst body = response.body || response;\n\nconst content = body.content?.[0]?.text || '';\nconst inputTokens = body.usage?.input_tokens || 0;\nconst outputTokens = body.usage?.output_tokens || 0;\n\n// Cost calculation (as of 2025)\nconst costs = {\n  'claude-sonnet-4-6': { input: 3.00 / 1000000, output: 15.00 / 1000000 },\n  'claude-opus-4-6': { input: 15.00 / 1000000, output: 75.00 / 1000000 },\n  'claude-haiku-4-5-20251001': { input: 0.80 / 1000000, output: 4.00 / 1000000 }\n};\n\nconst modelCost = costs[$json.model_id] || costs['claude-sonnet-4-6'];\nconst inputCost = inputTokens * modelCost.input;\nconst outputCost = outputTokens * modelCost.output;\n\n// Try to parse JSON from response if it looks like JSON\nlet parsedContent = content;\ntry {\n  const jsonMatch = content.match(/```json\\n([\\s\\S]*?)\\n```/) || content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsedContent = JSON.parse(jsonMatch[1] || jsonMatch[0]);\n  }\n} catch (e) {\n  // Keep as string if not valid JSON\n}\n\nreturn [{\n  json: {\n    content: content,\n    parsed_content: parsedContent,\n    model: $json.model_id,\n    input_tokens: inputTokens,\n    output_tokens: outputTokens,\n    input_cost: inputCost.toFixed(6),\n    output_cost: outputCost.toFixed(6),\n    total_cost: (inputCost + outputCost).toFixed(6),\n    workflow_name: $json.workflow_name,\n    client_name: $json.client_name,\n    purpose: $json.purpose,\n    timestamp: new Date().toISOString()\n  }\n}];"
+        "jsCode": "// Parse Gemini response into unified format\nconst response = $input.all()[0].json;\nconst body = response.body || response;\n\nconst content = body.candidates?.[0]?.content?.parts?.[0]?.text || '';\nconst inputTokens = body.usageMetadata?.promptTokenCount || 0;\nconst outputTokens = body.usageMetadata?.candidatesTokenCount || 0;\n\n// Gemini free tier = $0\nconst inputCost = 0;\nconst outputCost = 0;\n\n// Try to parse JSON from response\nlet parsedContent = content;\ntry {\n  const jsonMatch = content.match(/```json\\n([\\s\\S]*?)\\n```/) || content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsedContent = JSON.parse(jsonMatch[1] || jsonMatch[0]);\n  }\n} catch (e) {\n  // Keep as string if not valid JSON\n}\n\nconst routerData = $('Model Router').first().json;\n\nreturn [{\n  json: {\n    content: content,\n    parsed_content: parsedContent,\n    model: routerData.model_id,\n    provider: 'google',\n    input_tokens: inputTokens,\n    output_tokens: outputTokens,\n    input_cost: '0.000000',\n    output_cost: '0.000000',\n    total_cost: '0.000000',\n    workflow_name: routerData.workflow_name,\n    client_name: routerData.client_name,\n    purpose: routerData.purpose,\n    timestamp: new Date().toISOString()\n  }\n}];"
       },
-      "id": "parse-response",
-      "name": "Parse Response & Calculate Cost",
+      "id": "parse-gemini",
+      "name": "Parse Gemini Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [910, 200]
+      "position": [1130, 200]
     },
     {
       "parameters": {
-        "jsCode": "// Retry logic with exponential backoff\nconst input = $input.all()[0].json;\nconst retryCount = (input.retry_count || 0) + 1;\nconst maxRetries = input.max_retries || 3;\n\nif (retryCount > maxRetries) {\n  throw new Error(`Claude API failed after ${maxRetries} retries. Last error: ${JSON.stringify(input)}`);\n}\n\n// Exponential backoff: 2s, 4s, 8s\nconst backoffMs = Math.pow(2, retryCount) * 1000;\nawait new Promise(resolve => setTimeout(resolve, backoffMs));\n\nreturn [{\n  json: {\n    ...input,\n    retry_count: retryCount\n  }\n}];"
+        "jsCode": "// Parse Claude response into unified format\nconst response = $input.all()[0].json;\nconst body = response.body || response;\n\nconst content = body.content?.[0]?.text || '';\nconst inputTokens = body.usage?.input_tokens || 0;\nconst outputTokens = body.usage?.output_tokens || 0;\n\nconst routerData = $('Model Router').first().json;\nconst inputCost = inputTokens * routerData.cost_per_1k_input / 1000;\nconst outputCost = outputTokens * routerData.cost_per_1k_output / 1000;\n\n// Try to parse JSON from response\nlet parsedContent = content;\ntry {\n  const jsonMatch = content.match(/```json\\n([\\s\\S]*?)\\n```/) || content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsedContent = JSON.parse(jsonMatch[1] || jsonMatch[0]);\n  }\n} catch (e) {}\n\nreturn [{\n  json: {\n    content: content,\n    parsed_content: parsedContent,\n    model: routerData.model_id,\n    provider: 'anthropic',\n    input_tokens: inputTokens,\n    output_tokens: outputTokens,\n    input_cost: inputCost.toFixed(6),\n    output_cost: outputCost.toFixed(6),\n    total_cost: (inputCost + outputCost).toFixed(6),\n    workflow_name: routerData.workflow_name,\n    client_name: routerData.client_name,\n    purpose: routerData.purpose,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "parse-claude",
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Retry logic with exponential backoff\nconst input = $input.all()[0].json;\nconst retryCount = (input.retry_count || 0) + 1;\nconst maxRetries = input.max_retries || 3;\n\nif (retryCount > maxRetries) {\n  throw new Error(`API failed after ${maxRetries} retries (provider: ${input.provider}). Last error: ${JSON.stringify(input)}`);\n}\n\nconst backoffMs = Math.pow(2, retryCount) * 1000;\nawait new Promise(resolve => setTimeout(resolve, backoffMs));\n\nreturn [{\n  json: {\n    ...input,\n    retry_count: retryCount\n  }\n}];"
       },
       "id": "retry-handler",
       "name": "Retry with Backoff",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [910, 400]
+      "position": [1130, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge outputs from either provider into unified format\nreturn $input.all();"
+      },
+      "id": "merge-outputs",
+      "name": "Merge Provider Outputs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
     },
     {
       "parameters": {
@@ -82,6 +144,7 @@
             "Timestamp": "={{ $json.timestamp }}",
             "Workflow Name": "={{ $json.workflow_name }}",
             "Model": "={{ $json.model }}",
+            "Provider": "={{ $json.provider }}",
             "Input Tokens": "={{ $json.input_tokens }}",
             "Output Tokens": "={{ $json.output_tokens }}",
             "Input Cost": "={{ $json.input_cost }}",
@@ -96,7 +159,7 @@
       "name": "Log API Cost",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [1130, 200],
+      "position": [1570, 300],
       "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
     },
     {
@@ -105,21 +168,35 @@
       "name": "Return Response",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1350, 200],
-      "notes": "Returns: content, parsed_content, model, token counts, costs"
+      "position": [1790, 300],
+      "notes": "Returns: content, parsed_content, model, provider, token counts, costs"
     }
   ],
   "connections": {
     "Sub-Workflow Input": { "main": [[{ "node": "Model Router", "type": "main", "index": 0 }]] },
-    "Model Router": { "main": [[{ "node": "Claude API Call", "type": "main", "index": 0 }]] },
-    "Claude API Call": {
+    "Model Router": { "main": [[{ "node": "Which Provider?", "type": "main", "index": 0 }]] },
+    "Which Provider?": {
       "main": [
-        [{ "node": "Parse Response & Calculate Cost", "type": "main", "index": 0 }],
+        [{ "node": "Gemini API Call (FREE)", "type": "main", "index": 0 }],
+        [{ "node": "Claude API Call (PAID)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini API Call (FREE)": {
+      "main": [
+        [{ "node": "Parse Gemini Response", "type": "main", "index": 0 }],
         [{ "node": "Retry with Backoff", "type": "main", "index": 0 }]
       ]
     },
-    "Parse Response & Calculate Cost": { "main": [[{ "node": "Log API Cost", "type": "main", "index": 0 }]] },
-    "Retry with Backoff": { "main": [[{ "node": "Claude API Call", "type": "main", "index": 0 }]] },
+    "Claude API Call (PAID)": {
+      "main": [
+        [{ "node": "Parse Claude Response", "type": "main", "index": 0 }],
+        [{ "node": "Retry with Backoff", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Gemini Response": { "main": [[{ "node": "Merge Provider Outputs", "type": "main", "index": 0 }]] },
+    "Parse Claude Response": { "main": [[{ "node": "Merge Provider Outputs", "type": "main", "index": 0 }]] },
+    "Retry with Backoff": { "main": [[{ "node": "Which Provider?", "type": "main", "index": 0 }]] },
+    "Merge Provider Outputs": { "main": [[{ "node": "Log API Cost", "type": "main", "index": 0 }]] },
     "Log API Cost": { "main": [[{ "node": "Return Response", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },

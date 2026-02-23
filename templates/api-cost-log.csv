@@ -1,2 +1,2 @@
-Timestamp,Workflow Name,Model,Input Tokens,Output Tokens,Input Cost,Output Cost,Total Cost,Client Name,Purpose
-2025-01-01 09:00:00,call-intelligence,claude-sonnet-4-6,2500,800,0.0075,0.0040,0.0115,Acme Corp,Meeting notes extraction
+Timestamp,Workflow Name,Model,Provider,Input Tokens,Output Tokens,Input Cost,Output Cost,Total Cost,Client Name,Purpose
+2025-01-01 09:00:00,call-intelligence,gemini-2.5-pro-preview-05-06,google,2500,800,0.000000,0.000000,0.000000,Acme Corp,Meeting notes extraction

@@ -61,7 +61,7 @@
           "values": [
             { "name": "system_prompt", "value": "You are a lead qualification assistant for a solo RevOps consultant who works with B2B SaaS companies ($10-100M ARR). You evaluate inbound leads to determine fit and priority. Be decisive — a clear \"not a fit\" is more valuable than a wishy-washy \"maybe.\"" },
             { "name": "user_prompt", "value": "=Score and qualify this inbound lead.\n\n**Lead:** {{ $json.lead_name }}\n**Email:** {{ $json.lead_email }}\n**Company:** {{ $json.company_name }}\n**Title:** {{ $json.title }}\n**Message:** {{ $json.message }}\n**Industry:** {{ $json.industry }}\n**Employee Count:** {{ $json.employee_count }}\n**Estimated ARR:** {{ $json.estimated_arr }}\n**Funding:** {{ $json.funding_stage }}\n\nRespond with JSON: { fit_score (0-100), tier (Hot/Warm/Cool/Not a Fit), icp_match (Strong/Partial/Weak), reason (1-2 sentences), recommended_action (specific next step), response_draft (email reply appropriate for the tier), research_notes (key things to know before a call) }" },
-            { "name": "model", "value": "sonnet" },
+            { "name": "model", "value": "gemini-free" },
             { "name": "workflow_name", "value": "inbound-lead-capture" },
             { "name": "client_name", "value": "={{ $json.company_name }}" },
             { "name": "purpose", "value": "Lead scoring" }
