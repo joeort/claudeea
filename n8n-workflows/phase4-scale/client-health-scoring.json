@@ -3,26 +3,59 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 18 * * 0" }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * 0"
+            }
+          ]
+        }
       },
       "id": "weekly-trigger",
       "name": "Sunday 6:00 PM",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [250, 300]
+      "position": [
+        250,
+        300
+      ]
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
-        "filters": { "conditions": [{ "lookupColumn": "Status", "lookupValue": "Active" }] }
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1IYEGJ4v1UIocHUYuvxBAtq3IDD0cdsZwJo80b0_kPQQ"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "Active"
+            }
+          ]
+        }
       },
       "id": "get-clients",
       "name": "Get Active Clients",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [470, 300],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+      "position": [
+        470,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      }
     },
     {
       "parameters": {
@@ -32,21 +65,46 @@
       "name": "Gather Health Metrics",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [690, 300],
+      "position": [
+        690,
+        300
+      ],
       "notes": "In production: add HTTP Request nodes to pull actual data from ClickUp, Google Calendar, and Gmail APIs. This code node then aggregates the results."
     },
     {
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" },
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ywhteyrTqBjEpgjo"
+        },
         "fields": {
           "values": [
-            { "name": "system_prompt", "value": "You are a client success analyst for a RevOps consulting practice. You evaluate client engagement health based on quantitative signals and provide early warning when relationships may be at risk. Be direct and specific." },
-            { "name": "user_prompt", "value": "=Evaluate health for client: {{ $json.client_name }}\n\nMetrics: Meetings {{ $json.meetings_held }}/{{ $json.meetings_scheduled }}, Response time: {{ $json.avg_response_time }} days, Tasks on time: {{ $json.tasks_on_time }}/{{ $json.tasks_total }}, Client-blocked items: {{ $json.client_blocked_count }}, Days since interaction: {{ $json.days_since_interaction }}, Waiting items: {{ $json.waiting_items_count }} (avg age: {{ $json.waiting_items_avg_age }} days)\n\nProvide JSON: { health_score (0-100), score_breakdown (object with factors), trend (improving/stable/declining), risk_flags (array), recommended_actions (array), talking_points (array if score < 70) }" },
-            { "name": "model", "value": "gemini-free" },
-            { "name": "workflow_name", "value": "client-health-scoring" },
-            { "name": "client_name", "value": "={{ $json.client_name }}" },
-            { "name": "purpose", "value": "Health scoring" }
+            {
+              "name": "system_prompt",
+              "value": "You are a client success analyst for a RevOps consulting practice. You evaluate client engagement health based on quantitative signals and provide early warning when relationships may be at risk. Be direct and specific."
+            },
+            {
+              "name": "user_prompt",
+              "value": "=Evaluate health for client: {{ $json.client_name }}\n\nMetrics: Meetings {{ $json.meetings_held }}/{{ $json.meetings_scheduled }}, Response time: {{ $json.avg_response_time }} days, Tasks on time: {{ $json.tasks_on_time }}/{{ $json.tasks_total }}, Client-blocked items: {{ $json.client_blocked_count }}, Days since interaction: {{ $json.days_since_interaction }}, Waiting items: {{ $json.waiting_items_count }} (avg age: {{ $json.waiting_items_avg_age }} days)\n\nProvide JSON: { health_score (0-100), score_breakdown (object with factors), trend (improving/stable/declining), risk_flags (array), recommended_actions (array), talking_points (array if score < 70) }"
+            },
+            {
+              "name": "model",
+              "value": "gemini-free"
+            },
+            {
+              "name": "workflow_name",
+              "value": "client-health-scoring"
+            },
+            {
+              "name": "client_name",
+              "value": "={{ $json.client_name }}"
+            },
+            {
+              "name": "purpose",
+              "value": "Health scoring"
+            }
           ]
         }
       },
@@ -54,7 +112,10 @@
       "name": "Claude: Score Health",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [910, 300]
+      "position": [
+        910,
+        300
+      ]
     },
     {
       "parameters": {
@@ -64,7 +125,10 @@
       "name": "Aggregate & Check Alerts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1130, 300]
+      "position": [
+        1130,
+        300
+      ]
     },
     {
       "parameters": {
@@ -76,17 +140,84 @@
       "name": "Send Health Digest",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [1350, 300],
-      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+      "position": [
+        1350,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail"
+        }
+      }
     }
   ],
   "connections": {
-    "Sunday 6:00 PM": { "main": [[{ "node": "Get Active Clients", "type": "main", "index": 0 }]] },
-    "Get Active Clients": { "main": [[{ "node": "Gather Health Metrics", "type": "main", "index": 0 }]] },
-    "Gather Health Metrics": { "main": [[{ "node": "Claude: Score Health", "type": "main", "index": 0 }]] },
-    "Claude: Score Health": { "main": [[{ "node": "Aggregate & Check Alerts", "type": "main", "index": 0 }]] },
-    "Aggregate & Check Alerts": { "main": [[{ "node": "Send Health Digest", "type": "main", "index": 0 }]] }
+    "Sunday 6:00 PM": {
+      "main": [
+        [
+          {
+            "node": "Get Active Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Clients": {
+      "main": [
+        [
+          {
+            "node": "Gather Health Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gather Health Metrics": {
+      "main": [
+        [
+          {
+            "node": "Claude: Score Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Score Health": {
+      "main": [
+        [
+          {
+            "node": "Aggregate & Check Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate & Check Alerts": {
+      "main": [
+        [
+          {
+            "node": "Send Health Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "phase4" }, { "name": "health-scoring" }]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "phase4"
+    },
+    {
+      "name": "health-scoring"
+    }
+  ]
 }

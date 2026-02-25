@@ -1,0 +1,113 @@
+{
+  "name": "test-meeting-prep",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-meeting-prep",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "test-meeting-prep"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\nconst event = {\n  id: body.event_id || 'test_event_123',\n  summary: body.summary || 'Weekly RevOps Sync',\n  start: { dateTime: body.start || new Date(Date.now() + 7200000).toISOString() },\n  end: { dateTime: body.end || new Date(Date.now() + 10800000).toISOString() },\n  attendees: (body.attendees || ['ckearney@blackthorn.io']).map(e => ({ email: e })),\n  description: body.description || ''\n};\nconst attendees = event.attendees.map(a => a.email);\nconst domains = attendees.map(e => e.split('@')[1]).filter(d => !d.includes('gmail.com') && !d.includes('google.com'));\nconst startTime = new Date(event.start.dateTime);\nconst endTime = new Date(event.end.dateTime);\nconst durationMin = Math.round((endTime - startTime) / 60000);\nreturn [{ json: {\n  event_id: event.id,\n  event_title: event.summary,\n  meeting_datetime: event.start.dateTime,\n  meeting_duration: durationMin,\n  attendees: attendees.join(', '),\n  attendee_domains: [...new Set(domains)],\n  event_description: event.description,\n  manual_notes: event.description,\n  lookup_type: 'email_domain',\n  lookup_value: domains[0] || 'unknown'\n} }];"
+      },
+      "id": "sim-event",
+      "name": "Simulate Calendar Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "mode": "id", "value": "KonUDndTDNefwnEB" },
+        "fields": {
+          "values": [
+            { "name": "lookup_type", "value": "={{ $json.lookup_type }}" },
+            { "name": "lookup_value", "value": "={{ $json.lookup_value }}" }
+          ]
+        }
+      },
+      "id": "client-lookup",
+      "name": "Client Lookup",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "leftValue": "={{ $json.found }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }
+          ]
+        }
+      },
+      "id": "is-client",
+      "name": "Is Client Meeting?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.clickup.com/api/v2/team/9011968555/task?space_ids[]={{ $('Client Lookup').first().json.clickup_space_id }}&statuses[]=open&statuses[]=in%20progress&order_by=priority",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-tasks",
+      "name": "Get Open ClickUp Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 200],
+      "credentials": { "httpHeaderAuth": { "id": "acXY3260ROLdcXwv", "name": "Clickup header auth" } }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.clickup.com/api/v2/team/9011968555/task?space_ids[]={{ $('Client Lookup').first().json.clickup_space_id }}&statuses[]=waiting%20on%20client",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-waiting",
+      "name": "Get Waiting on Client Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 400],
+      "credentials": { "httpHeaderAuth": { "id": "acXY3260ROLdcXwv", "name": "Clickup header auth" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const eventInfo = $('Simulate Calendar Event').first().json;\nconst clientData = $('Client Lookup').first().json;\nconst openTasksRaw = $('Get Open ClickUp Tasks').first().json;\nconst waitingTasksRaw = $('Get Waiting on Client Tasks').first().json;\nconst openTasks = (openTasksRaw.tasks || []).map(t => `- [${t.priority?.priority || 'normal'}] ${t.name} (${t.status?.status || 'open'})`).join('\\n') || 'No open tasks';\nconst waitingTasks = (waitingTasksRaw.tasks || []).map(t => `- ${t.name}`).join('\\n') || 'No waiting items';\nreturn [{ json: {\n  summary: `Meeting prep for ${clientData.client_name}`,\n  open_task_count: (openTasksRaw.tasks || []).length,\n  waiting_task_count: (waitingTasksRaw.tasks || []).length,\n  open_tasks: openTasks,\n  waiting_tasks: waitingTasks,\n  client_name: clientData.client_name,\n  meeting_duration: eventInfo.meeting_duration\n} }];"
+      },
+      "id": "build-result",
+      "name": "Build Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Simulate Calendar Event", "type": "main", "index": 0 }]] },
+    "Simulate Calendar Event": { "main": [[{ "node": "Client Lookup", "type": "main", "index": 0 }]] },
+    "Client Lookup": { "main": [[{ "node": "Is Client Meeting?", "type": "main", "index": 0 }]] },
+    "Is Client Meeting?": { "main": [
+      [
+        { "node": "Get Open ClickUp Tasks", "type": "main", "index": 0 },
+        { "node": "Get Waiting on Client Tasks", "type": "main", "index": 0 }
+      ],
+      []
+    ]},
+    "Get Open ClickUp Tasks": { "main": [[{ "node": "Build Result", "type": "main", "index": 0 }]] },
+    "Get Waiting on Client Tasks": { "main": [[{ "node": "Build Result", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

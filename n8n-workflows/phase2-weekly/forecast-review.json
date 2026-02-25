@@ -3,27 +3,60 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 5" }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 5"
+            }
+          ]
+        }
       },
       "id": "cron-trigger",
       "name": "Friday 9:00 AM",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "notes": "Runs at 9 AM Friday — BEFORE the weekly update workflow at 11 AM"
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
-        "filters": { "conditions": [{ "lookupColumn": "Status", "lookupValue": "Active" }] }
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1IYEGJ4v1UIocHUYuvxBAtq3IDD0cdsZwJo80b0_kPQQ"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "Active"
+            }
+          ]
+        }
       },
       "id": "get-active-clients",
       "name": "Get Active Clients",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [470, 300],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+      "position": [
+        470,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      }
     },
     {
       "parameters": {
@@ -33,34 +66,69 @@
       "name": "Filter: Has Forecast Sheet",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [690, 300]
+      "position": [
+        690,
+        300
+      ]
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "={{ $json['Forecast Sheet ID'] }}" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Pipeline" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json['Forecast Sheet ID'] }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Pipeline"
+        },
         "options": {}
       },
       "id": "read-pipeline-data",
       "name": "Read Pipeline Data",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [910, 200],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } },
+      "position": [
+        910,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      },
       "notes": "Reads the 'Pipeline' tab. Adjust sheet name to match your forecast template."
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "={{ $json['Forecast Sheet ID'] }}" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Last Week Snapshot" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json['Forecast Sheet ID'] }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Last Week Snapshot"
+        },
         "options": {}
       },
       "id": "read-last-week",
       "name": "Read Last Week Snapshot",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [910, 400],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+      "position": [
+        910,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      }
     },
     {
       "parameters": {
@@ -70,23 +138,41 @@
       "name": "Calculate Pipeline Metrics",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1130, 300]
+      "position": [
+        1130,
+        300
+      ]
     },
     {
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" }
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ywhteyrTqBjEpgjo"
+        }
       },
       "id": "claude-analyze",
       "name": "Claude (Opus): Analyze Forecast",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1350, 300]
+      "position": [
+        1350,
+        300
+      ]
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Calculate Pipeline Metrics').first().json.client['Forecast Sheet ID'] }}" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "=Analysis - {{ new Date().toLocaleDateString('en-US') }}" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Calculate Pipeline Metrics').first().json.client['Forecast Sheet ID'] }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "=Analysis - {{ new Date().toLocaleDateString('en-US') }}"
+        },
         "columns": {
           "mappingMode": "autoMapInputData"
         },
@@ -96,8 +182,16 @@
       "name": "Write Analysis Tab",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [1570, 200],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } },
+      "position": [
+        1570,
+        200
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      },
       "notes": "Creates a new tab with the analysis. You may need to format this manually or use a code node to structure the data."
     },
     {
@@ -113,46 +207,163 @@
       "name": "Create Forecast Email Draft",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [1570, 400],
-      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } },
+      "position": [
+        1570,
+        400
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail"
+        }
+      },
       "notes": "Set operation to 'createDraft' in n8n UI"
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "={{ $('Calculate Pipeline Metrics').first().json.client['Forecast Sheet ID'] }}" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Last Week Snapshot" },
-        "columns": { "mappingMode": "autoMapInputData" },
-        "options": { "cellUpdate": "clear" }
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Calculate Pipeline Metrics').first().json.client['Forecast Sheet ID'] }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Last Week Snapshot"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        },
+        "options": {
+          "cellUpdate": "clear"
+        }
       },
       "id": "snapshot-current",
       "name": "Snapshot Current Data",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [1790, 300],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } },
+      "position": [
+        1790,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      },
       "notes": "Overwrites 'Last Week Snapshot' with current data for next week's comparison"
     }
   ],
   "connections": {
-    "Friday 9:00 AM": { "main": [[{ "node": "Get Active Clients", "type": "main", "index": 0 }]] },
-    "Get Active Clients": { "main": [[{ "node": "Filter: Has Forecast Sheet", "type": "main", "index": 0 }]] },
+    "Friday 9:00 AM": {
+      "main": [
+        [
+          {
+            "node": "Get Active Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Clients": {
+      "main": [
+        [
+          {
+            "node": "Filter: Has Forecast Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Filter: Has Forecast Sheet": {
-      "main": [[
-        { "node": "Read Pipeline Data", "type": "main", "index": 0 },
-        { "node": "Read Last Week Snapshot", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Read Pipeline Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Last Week Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Read Pipeline Data": { "main": [[{ "node": "Calculate Pipeline Metrics", "type": "main", "index": 0 }]] },
-    "Read Last Week Snapshot": { "main": [[{ "node": "Calculate Pipeline Metrics", "type": "main", "index": 0 }]] },
-    "Calculate Pipeline Metrics": { "main": [[{ "node": "Claude (Opus): Analyze Forecast", "type": "main", "index": 0 }]] },
+    "Read Pipeline Data": {
+      "main": [
+        [
+          {
+            "node": "Calculate Pipeline Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Last Week Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Calculate Pipeline Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Pipeline Metrics": {
+      "main": [
+        [
+          {
+            "node": "Claude (Opus): Analyze Forecast",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Claude (Opus): Analyze Forecast": {
-      "main": [[
-        { "node": "Write Analysis Tab", "type": "main", "index": 0 },
-        { "node": "Create Forecast Email Draft", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Write Analysis Tab",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Forecast Email Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Write Analysis Tab": { "main": [[{ "node": "Snapshot Current Data", "type": "main", "index": 0 }]] }
+    "Write Analysis Tab": {
+      "main": [
+        [
+          {
+            "node": "Snapshot Current Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "phase2" }, { "name": "forecast" }]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "phase2"
+    },
+    {
+      "name": "forecast"
+    }
+  ]
 }

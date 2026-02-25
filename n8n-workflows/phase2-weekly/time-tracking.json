@@ -3,24 +3,44 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 23 * * *" }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 23 * * *"
+            }
+          ]
+        }
       },
       "id": "daily-cron",
       "name": "Daily 11:00 PM",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [250, 200],
+      "position": [
+        250,
+        200
+      ],
       "notes": "Daily: auto-log meetings to Toggl"
     },
     {
       "parameters": {
-        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 1 * *" }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 1 * *"
+            }
+          ]
+        }
       },
       "id": "monthly-cron",
       "name": "1st of Month 9:00 AM",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [250, 500],
+      "position": [
+        250,
+        500
+      ],
       "notes": "Monthly: generate invoice summary"
     },
     {
@@ -37,8 +57,16 @@
       "name": "Get Today's Calendar Events",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 3,
-      "position": [470, 200],
-      "credentials": { "googleCalendarOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Calendar" } }
+      "position": [
+        470,
+        200
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Calendar"
+        }
+      }
     },
     {
       "parameters": {
@@ -48,23 +76,33 @@
       "name": "Filter Client Meetings",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [690, 200]
+      "position": [
+        690,
+        200
+      ]
     },
     {
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_LOOKUP_WORKFLOW_ID" }
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "KonUDndTDNefwnEB"
+        }
       },
       "id": "lookup-client-for-toggl",
       "name": "Client Lookup (for Toggl)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [910, 200]
+      "position": [
+        910,
+        200
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.track.toggl.com/api/v9/workspaces/CONFIGURE_ME_WORKSPACE_ID/time_entries",
+        "url": "https://api.track.toggl.com/api/v9/workspaces/9126346/time_entries",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpBasicAuth",
         "sendBody": true,
@@ -75,13 +113,21 @@
       "name": "Create Toggl Time Entry",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1130, 200],
-      "credentials": { "httpBasicAuth": { "id": "CONFIGURE_ME", "name": "Toggl API (email:api_token)" } },
+      "position": [
+        1130,
+        200
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CONFIGURE_ME",
+          "name": "Toggl API (email:api_token)"
+        }
+      },
       "notes": "Basic auth: username = your Toggl email, password = your Toggl API token"
     },
     {
       "parameters": {
-        "url": "=https://api.track.toggl.com/reports/api/v3/workspace/CONFIGURE_ME_WORKSPACE_ID/summary/time_entries",
+        "url": "=https://api.track.toggl.com/reports/api/v3/workspace/9126346/summary/time_entries",
         "method": "POST",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpBasicAuth",
@@ -93,21 +139,52 @@
       "name": "Get Last Month's Time",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [470, 500],
-      "credentials": { "httpBasicAuth": { "id": "CONFIGURE_ME", "name": "Toggl API" } }
+      "position": [
+        470,
+        500
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CONFIGURE_ME",
+          "name": "Toggl API"
+        }
+      }
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
-        "filters": { "conditions": [{ "lookupColumn": "Status", "lookupValue": "Active" }] }
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1IYEGJ4v1UIocHUYuvxBAtq3IDD0cdsZwJo80b0_kPQQ"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "Active"
+            }
+          ]
+        }
       },
       "id": "get-retainer-info",
       "name": "Get Retainer Info",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [470, 700],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+      "position": [
+        470,
+        700
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      }
     },
     {
       "parameters": {
@@ -117,7 +194,10 @@
       "name": "Generate Invoice Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [690, 600]
+      "position": [
+        690,
+        600
+      ]
     },
     {
       "parameters": {
@@ -129,25 +209,122 @@
       "name": "Email Invoice Summary",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [910, 600],
-      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+      "position": [
+        910,
+        600
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail"
+        }
+      }
     }
   ],
   "connections": {
-    "Daily 11:00 PM": { "main": [[{ "node": "Get Today's Calendar Events", "type": "main", "index": 0 }]] },
-    "Get Today's Calendar Events": { "main": [[{ "node": "Filter Client Meetings", "type": "main", "index": 0 }]] },
-    "Filter Client Meetings": { "main": [[{ "node": "Client Lookup (for Toggl)", "type": "main", "index": 0 }]] },
-    "Client Lookup (for Toggl)": { "main": [[{ "node": "Create Toggl Time Entry", "type": "main", "index": 0 }]] },
-    "1st of Month 9:00 AM": {
-      "main": [[
-        { "node": "Get Last Month's Time", "type": "main", "index": 0 },
-        { "node": "Get Retainer Info", "type": "main", "index": 0 }
-      ]]
+    "Daily 11:00 PM": {
+      "main": [
+        [
+          {
+            "node": "Get Today's Calendar Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Get Last Month's Time": { "main": [[{ "node": "Generate Invoice Summary", "type": "main", "index": 0 }]] },
-    "Get Retainer Info": { "main": [[{ "node": "Generate Invoice Summary", "type": "main", "index": 0 }]] },
-    "Generate Invoice Summary": { "main": [[{ "node": "Email Invoice Summary", "type": "main", "index": 0 }]] }
+    "Get Today's Calendar Events": {
+      "main": [
+        [
+          {
+            "node": "Filter Client Meetings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Client Meetings": {
+      "main": [
+        [
+          {
+            "node": "Client Lookup (for Toggl)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Lookup (for Toggl)": {
+      "main": [
+        [
+          {
+            "node": "Create Toggl Time Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1st of Month 9:00 AM": {
+      "main": [
+        [
+          {
+            "node": "Get Last Month's Time",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Retainer Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Last Month's Time": {
+      "main": [
+        [
+          {
+            "node": "Generate Invoice Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Retainer Info": {
+      "main": [
+        [
+          {
+            "node": "Generate Invoice Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Invoice Summary": {
+      "main": [
+        [
+          {
+            "node": "Email Invoice Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "phase2" }, { "name": "time-tracking" }]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "phase2"
+    },
+    {
+      "name": "time-tracking"
+    }
+  ]
 }

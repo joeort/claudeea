@@ -7,7 +7,10 @@
       "name": "Sub-Workflow Input",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "notes": "Receives: system_prompt, user_prompt, model (gemini-free|sonnet|opus), workflow_name, client_name, purpose. Default: gemini-free"
     },
     {
@@ -18,14 +21,26 @@
       "name": "Model Router",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [470, 300]
+      "position": [
+        470,
+        300
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": false },
+          "options": {
+            "caseSensitive": false
+          },
           "conditions": [
-            { "leftValue": "={{ $json.provider }}", "rightValue": "google", "operator": { "type": "string", "operation": "equals" } }
+            {
+              "leftValue": "={{ $json.provider }}",
+              "rightValue": "google",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
           ]
         }
       },
@@ -33,7 +48,10 @@
       "name": "Which Provider?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [690, 300],
+      "position": [
+        690,
+        300
+      ],
       "notes": "Routes to Google Gemini (free) or Anthropic Claude (paid)"
     },
     {
@@ -43,7 +61,10 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "content-type", "value": "application/json" }
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -51,14 +72,21 @@
         "jsonBody": "={{ JSON.stringify({ system_instruction: { parts: [{ text: $json.system_prompt }] }, contents: [{ parts: [{ text: $json.user_prompt }] }], generationConfig: { maxOutputTokens: $json.max_tokens, temperature: 0.7 } }) }}",
         "options": {
           "timeout": 120000,
-          "response": { "response": { "fullResponse": true } }
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
         }
       },
       "id": "gemini-api-call",
       "name": "Gemini API Call (FREE)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [910, 200],
+      "position": [
+        910,
+        200
+      ],
       "notes": "Google Gemini API — FREE tier: 15 RPM / 1M tokens/day for Flash, 5 RPM for Pro. Get key at https://aistudio.google.com/apikey",
       "onError": "continueErrorOutput"
     },
@@ -71,8 +99,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "anthropic-version", "value": "2023-06-01" },
-            { "name": "content-type", "value": "application/json" }
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -80,16 +114,26 @@
         "jsonBody": "={{ JSON.stringify({ model: $json.model_id, max_tokens: $json.max_tokens, system: $json.system_prompt, messages: [{ role: 'user', content: $json.user_prompt }] }) }}",
         "options": {
           "timeout": 120000,
-          "response": { "response": { "fullResponse": true } }
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
         }
       },
       "id": "claude-api-call",
       "name": "Claude API Call (PAID)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [910, 400],
+      "position": [
+        910,
+        400
+      ],
       "credentials": {
-        "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "Anthropic API Key" }
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_ME",
+          "name": "Anthropic API Key"
+        }
       },
       "notes": "Only used for high-value tasks: forecast review, proposals, newsletters",
       "onError": "continueErrorOutput"
@@ -102,7 +146,10 @@
       "name": "Parse Gemini Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1130, 200]
+      "position": [
+        1130,
+        200
+      ]
     },
     {
       "parameters": {
@@ -112,7 +159,10 @@
       "name": "Parse Claude Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1130, 400]
+      "position": [
+        1130,
+        400
+      ]
     },
     {
       "parameters": {
@@ -122,7 +172,10 @@
       "name": "Retry with Backoff",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1130, 600]
+      "position": [
+        1130,
+        600
+      ]
     },
     {
       "parameters": {
@@ -132,12 +185,23 @@
       "name": "Merge Provider Outputs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1350, 300]
+      "position": [
+        1350,
+        300
+      ]
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_COST_LOG_SHEET_ID" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "CONFIGURE_ME_COST_LOG_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        },
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
@@ -159,8 +223,16 @@
       "name": "Log API Cost",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [1570, 300],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+      "position": [
+        1570,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      }
     },
     {
       "parameters": {},
@@ -168,37 +240,155 @@
       "name": "Return Response",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1790, 300],
+      "position": [
+        1790,
+        300
+      ],
       "notes": "Returns: content, parsed_content, model, provider, token counts, costs"
     }
   ],
   "connections": {
-    "Sub-Workflow Input": { "main": [[{ "node": "Model Router", "type": "main", "index": 0 }]] },
-    "Model Router": { "main": [[{ "node": "Which Provider?", "type": "main", "index": 0 }]] },
+    "Sub-Workflow Input": {
+      "main": [
+        [
+          {
+            "node": "Model Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model Router": {
+      "main": [
+        [
+          {
+            "node": "Which Provider?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Which Provider?": {
       "main": [
-        [{ "node": "Gemini API Call (FREE)", "type": "main", "index": 0 }],
-        [{ "node": "Claude API Call (PAID)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Gemini API Call (FREE)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude API Call (PAID)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Gemini API Call (FREE)": {
       "main": [
-        [{ "node": "Parse Gemini Response", "type": "main", "index": 0 }],
-        [{ "node": "Retry with Backoff", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Parse Gemini Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry with Backoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Claude API Call (PAID)": {
       "main": [
-        [{ "node": "Parse Claude Response", "type": "main", "index": 0 }],
-        [{ "node": "Retry with Backoff", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry with Backoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Parse Gemini Response": { "main": [[{ "node": "Merge Provider Outputs", "type": "main", "index": 0 }]] },
-    "Parse Claude Response": { "main": [[{ "node": "Merge Provider Outputs", "type": "main", "index": 0 }]] },
-    "Retry with Backoff": { "main": [[{ "node": "Which Provider?", "type": "main", "index": 0 }]] },
-    "Merge Provider Outputs": { "main": [[{ "node": "Log API Cost", "type": "main", "index": 0 }]] },
-    "Log API Cost": { "main": [[{ "node": "Return Response", "type": "main", "index": 0 }]] }
+    "Parse Gemini Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Provider Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Provider Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry with Backoff": {
+      "main": [
+        [
+          {
+            "node": "Which Provider?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Provider Outputs": {
+      "main": [
+        [
+          {
+            "node": "Log API Cost",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log API Cost": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "shared" }, { "name": "utility" }]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "shared"
+    },
+    {
+      "name": "utility"
+    }
+  ]
 }

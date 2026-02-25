@@ -92,7 +92,7 @@ Most workflows run on **Gemini free tier** ($0). Claude Opus is reserved for onl
 - **ClickUp** — Task management
 - **Gmail** — Email drafts (human-in-the-loop)
 - **Google Docs** — Collaborative deliverables
-- **OneDrive** — Client file storage
+- **Google Drive** — Client file storage
 - **Toggl** — Time tracking
 - **HubSpot** — Personal CRM
 - **Apollo** — Lead enrichment

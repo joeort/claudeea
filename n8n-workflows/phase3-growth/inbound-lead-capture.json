@@ -56,7 +56,7 @@
     {
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" },
+        "workflowId": { "__rl": true, "mode": "id", "value": "ywhteyrTqBjEpgjo" },
         "fields": {
           "values": [
             { "name": "system_prompt", "value": "You are a lead qualification assistant for a solo RevOps consultant who works with B2B SaaS companies ($10-100M ARR). You evaluate inbound leads to determine fit and priority. Be decisive — a clear \"not a fit\" is more valuable than a wishy-washy \"maybe.\"" },

@@ -9,7 +9,7 @@
 - ClickUp account with API access
 - Toggl Track account with API token
 - HubSpot account (free tier works)
-- OneDrive / Microsoft 365 account
+- Google Drive (via same Google OAuth as Sheets)
 - Apollo.io or Clearbit account (for lead enrichment)
 - LinkedIn Developer account (for publishing)
 - Squarespace website with form
@@ -67,11 +67,11 @@ Most workflows use **Gemini free tier** ($0). Claude is only used for 2 high-val
    - Username: your Toggl email
    - Password: your API token
 
-### Microsoft Graph (OneDrive)
-1. Go to Azure Portal → App Registrations → New Registration
-2. Add API permissions: Files.ReadWrite, User.Read
-3. Create client secret
-4. In n8n: create an **OAuth2 API** credential with Microsoft Graph settings
+### Google Drive
+1. Uses the same Google OAuth2 credential as Google Sheets
+2. In n8n: create a **Google Drive OAuth2 API** credential (or reuse your existing Google OAuth)
+3. Ensure the Drive API is enabled in your Google Cloud project
+4. Grant scopes: `https://www.googleapis.com/auth/drive`
 
 ### HubSpot
 1. Go to HubSpot Settings → Integrations → Private Apps
@@ -96,11 +96,11 @@ Most workflows use **Gemini free tier** ($0). Claude is only used for 2 high-val
 
 ## Step 2: Google Sheets Setup
 
-### Client Roster Sheet
-1. Create a new Google Sheet named "Client Roster"
-2. Import `templates/client-roster.csv` as the first sheet
-3. Delete the sample rows, keep headers
-4. Note the Sheet ID from the URL (the long string between /d/ and /edit)
+### Client Roster Sheet — DONE
+- Sheet ID: `1IYEGJ4v1UIocHUYuvxBAtq3IDD0cdsZwJo80b0_kPQQ`
+- Already configured in all 6 workflows that reference it
+- 18 columns (OneDrive column removed, Google Drive Folder ID used instead)
+- Import `templates/client-roster.csv` headers if starting fresh
 
 ### API Cost Log Sheet
 1. Create a new Google Sheet named "API Cost Log"
@@ -161,22 +161,25 @@ After importing each workflow, search for `CONFIGURE_ME` in the JSON and replace
 
 | Placeholder | Where to Find |
 |------------|---------------|
+| ~~`CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID`~~ | **DONE** — `1IYEGJ4v1UIocHUYuvxBAtq3IDD0cdsZwJo80b0_kPQQ` |
+| ~~`CONFIGURE_ME_CLIENT_LOOKUP_WORKFLOW_ID`~~ | **DONE** — `KonUDndTDNefwnEB` |
+| ~~`CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID`~~ | **DONE** — `ywhteyrTqBjEpgjo` |
+| ~~`CONFIGURE_ME_N8N_URL`~~ | **DONE** — `https://n8n.revopsinflection.com` |
 | `CONFIGURE_ME_GEMINI_API_KEY` | https://aistudio.google.com/apikey |
-| `CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID` | Google Sheet URL |
 | `CONFIGURE_ME_COST_LOG_SHEET_ID` | Google Sheet URL |
 | `CONFIGURE_ME_ERRORS_SHEET_ID` | Google Sheet URL |
 | `CONFIGURE_ME_CONTENT_CALENDAR_SHEET_ID` | Google Sheet URL |
 | `CONFIGURE_ME_LINKEDIN_ANALYTICS_SHEET_ID` | Google Sheet URL |
-| `CONFIGURE_ME_CLIENT_LOOKUP_WORKFLOW_ID` | n8n workflow ID after import |
-| `CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID` | n8n workflow ID after import |
 | `CONFIGURE_ME_YOUR_EMAIL` | Your Gmail address |
 | `CONFIGURE_ME_TEAM_ID` | ClickUp team/workspace ID |
 | `CONFIGURE_ME_WORKSPACE_ID` | Toggl workspace ID |
 | `CONFIGURE_ME_LINKEDIN_PERSON_ID` | Your LinkedIn member URN |
-| `CONFIGURE_ME_N8N_URL` | Your n8n instance URL |
 | `CONFIGURE_ME_RSS_FEED_URL` | RSS feed URL(s) for industry news |
 | `CONFIGURE_ME_CONTENT_IDEAS_LIST_ID` | ClickUp list ID for content ideas |
 | `CONFIGURE_ME_NEWSLETTER_IDEAS_LIST_ID` | ClickUp list ID for newsletter topics |
+| `CONFIGURE_ME_CLICKUP_LIST_ID` | ClickUp list ID for action item tasks (call-intelligence) |
+| `CONFIGURE_ME_SHARED_DRIVE_ID` | Google Shared Drive ID (client-onboarding) — omit if using My Drive |
+| `CONFIGURE_ME_CLIENTS_PARENT_FOLDER_ID` | Google Drive folder ID for /Clients/ parent folder |
 
 ---
 

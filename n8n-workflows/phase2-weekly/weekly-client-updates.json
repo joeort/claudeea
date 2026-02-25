@@ -3,27 +3,60 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 11 * * 5" }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 11 * * 5"
+            }
+          ]
+        }
       },
       "id": "cron-trigger",
       "name": "Friday 11:00 AM",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "notes": "Fires every Friday at 11:00 AM. Adjust timezone in n8n settings."
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
-        "filters": { "conditions": [{ "lookupColumn": "Status", "lookupValue": "Active" }] }
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1IYEGJ4v1UIocHUYuvxBAtq3IDD0cdsZwJo80b0_kPQQ"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "Active"
+            }
+          ]
+        }
       },
       "id": "get-active-clients",
       "name": "Get Active Clients",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [470, 300],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+      "position": [
+        470,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      }
     },
     {
       "parameters": {
@@ -33,64 +66,49 @@
       "name": "Split by Client",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [690, 300]
+      "position": [
+        690,
+        300
+      ]
     },
     {
       "parameters": {
-        "url": "=https://api.clickup.com/api/v2/team/CONFIGURE_ME_TEAM_ID/task?space_ids[]={{ $json['ClickUp Space ID'] }}&date_updated_gt={{ Date.now() - 7 * 24 * 60 * 60 * 1000 }}&include_closed=true",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {}
-      },
-      "id": "get-week-tasks",
-      "name": "Get This Week's Tasks",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [910, 200],
-      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "ClickUp API Key" } }
-    },
-    {
-      "parameters": {
-        "url": "=https://api.clickup.com/api/v2/team/CONFIGURE_ME_TEAM_ID/task?space_ids[]={{ $json['ClickUp Space ID'] }}&statuses[]=waiting%20on%20client",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {}
-      },
-      "id": "get-blocked-tasks",
-      "name": "Get Blocked Tasks",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [910, 400],
-      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "ClickUp API Key" } }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Categorize tasks and build the Claude prompt\nconst client = $('Split by Client').first().json;\nconst weekTasks = $('Get This Week\\'s Tasks').first().json;\nconst blockedTasks = $('Get Blocked Tasks').first().json;\n\nconst allTasks = weekTasks.tasks || [];\nconst completed = allTasks.filter(t => t.status?.status === 'closed' || t.status?.status === 'complete');\nconst inProgress = allTasks.filter(t => t.status?.status === 'in progress' || t.status?.status === 'open');\nconst blocked = (blockedTasks.tasks || []);\n\nconst formatTasks = (tasks) => tasks.map(t => \n  `- ${t.name} (Priority: ${t.priority?.priority || 'normal'})`\n).join('\\n') || 'None';\n\nconst weekEnd = new Date();\nconst weekEndStr = weekEnd.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });\n\nreturn [{\n  json: {\n    system_prompt: `You are a senior RevOps consultant writing weekly status update emails to your B2B SaaS clients. Your tone is professional, concise, and confident — like a trusted advisor, not a vendor. You show progress clearly, call out blockers without blame, and always orient toward outcomes.\\n\\nWriting rules:\\n- Lead with the headline (TL;DR)\\n- Use bullet points, not paragraphs\\n- Be specific — include numbers, dates, and names\\n- Blockers should have clear asks with deadlines\\n- End with forward momentum\\n- Match the client's update preference: \"executive\" = 5-7 bullets max, \"detailed\" = full breakdown`,\n    user_prompt: `Write a weekly status update email for my client.\\n\\n**Client:** ${client['Client Name']}\\n**Week Ending:** ${weekEndStr}\\n**Update Preference:** ${client['Update Preference'] || 'detailed'}\\n**Primary Contact:** ${client['Primary Contact Name']}\\n\\n**Tasks Completed This Week:**\\n${formatTasks(completed)}\\n\\n**Tasks In Progress:**\\n${formatTasks(inProgress)}\\n\\n**Blocked / Waiting on Client:**\\n${formatTasks(blocked)}\\n\\n---\\n\\nGenerate the email with: Subject line, TL;DR (2-3 sentences), Completed This Week, In Progress (with expected completion), Needs Your Input (specific asks with deadlines), and Next Week's Focus (top 2-3 priorities).`,\n    model: 'gemini-free',\n    workflow_name: 'weekly-client-updates',\n    client_name: client['Client Name'],\n    purpose: 'Weekly status update draft',\n    client: client\n  }\n}];"
+        "jsCode": "// Fetch ClickUp tasks inline and build the AI prompt\nconst client = $('Split by Client').first().json;\nconst spaceId = $('Split by Client').first().json['ClickUp Space ID'];\n\nconst baseUrl = `https://api.clickup.com/api/v2/team/9011968555/task?space_ids[]=${spaceId}&include_closed=false`;\nconst headers = { Authorization: 'pk_120226108_5A4ZTPSW5PUZ4YDQR9NP1LR2OPCA5BLX' };\n\n// Fetch all open/recent tasks\nconst openResponse = await this.helpers.httpRequest({\n  method: 'GET',\n  url: baseUrl,\n  headers,\n  json: true\n});\n\n// Also fetch closed tasks from this week\nconst weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;\nconst closedResponse = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `https://api.clickup.com/api/v2/team/9011968555/task?space_ids[]=${spaceId}&include_closed=true&date_updated_gt=${weekAgo}`,\n  headers,\n  json: true\n});\n\nconst allTasks = closedResponse.tasks || [];\nconst completed = allTasks.filter(t => t.status?.status === 'closed' || t.status?.status === 'complete');\nconst inProgress = allTasks.filter(t => t.status?.status === 'in progress' || t.status?.status === 'open');\nconst blocked = (openResponse.tasks || []).filter(t => {\n  const s = (t.status?.status || '').toLowerCase();\n  return s.includes('waiting');\n});\n\nconst formatTasks = (tasks) => tasks.map(t =>\n  `- ${t.name} (Priority: ${t.priority?.priority || 'normal'})`\n).join('\\n') || 'None';\n\nconst weekEnd = new Date();\nconst weekEndStr = weekEnd.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });\n\nreturn [{\n  json: {\n    system_prompt: `You are a senior RevOps consultant writing weekly status update emails to your B2B SaaS clients. Your tone is professional, concise, and confident — like a trusted advisor, not a vendor. You show progress clearly, call out blockers without blame, and always orient toward outcomes.\\n\\nWriting rules:\\n- Lead with the headline (TL;DR)\\n- Use bullet points, not paragraphs\\n- Be specific — include numbers, dates, and names\\n- Blockers should have clear asks with deadlines\\n- End with forward momentum\\n- Match the client's update preference: \"executive\" = 5-7 bullets max, \"detailed\" = full breakdown`,\n    user_prompt: `Write a weekly status update email for my client.\\n\\n**Client:** ${client['Client Name']}\\n**Week Ending:** ${weekEndStr}\\n**Update Preference:** ${client['Update Preference'] || 'detailed'}\\n**Primary Contact:** ${client['Primary Contact Name']}\\n\\n**Tasks Completed This Week:**\\n${formatTasks(completed)}\\n\\n**Tasks In Progress:**\\n${formatTasks(inProgress)}\\n\\n**Blocked / Waiting on Client:**\\n${formatTasks(blocked)}\\n\\n---\\n\\nGenerate the email with: Subject line, TL;DR (2-3 sentences), Completed This Week, In Progress (with expected completion), Needs Your Input (specific asks with deadlines), and Next Week's Focus (top 2-3 priorities).`,\n    model: 'gemini-free',\n    workflow_name: 'weekly-client-updates',\n    client_name: client['Client Name'],\n    purpose: 'Weekly status update draft',\n    client: client\n  }\n}];"
       },
       "id": "build-update-prompt",
-      "name": "Build Update Prompt",
+      "name": "Fetch Tasks & Build Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1130, 300]
+      "position": [
+        910,
+        300
+      ]
     },
     {
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" }
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ywhteyrTqBjEpgjo"
+        }
       },
       "id": "claude-draft",
       "name": "Claude: Draft Update",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1350, 300]
+      "position": [
+        1130,
+        300
+      ]
     },
     {
       "parameters": {
-        "sendTo": "={{ $('Build Update Prompt').first().json.client['Primary Contact Email'] }}",
-        "subject": "={{ $('Build Update Prompt').first().json.client['Client Name'] }} RevOps Weekly Update — {{ new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) }}",
+        "sendTo": "={{ $('Fetch Tasks & Build Prompt').first().json.client['Primary Contact Email'] }}",
+        "subject": "={{ $('Fetch Tasks & Build Prompt').first().json.client['Client Name'] }} RevOps Weekly Update — {{ new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) }}",
         "message": "={{ $json.content }}",
         "options": {
-          "ccList": "={{ $('Build Update Prompt').first().json.client['CC Emails']?.replace(';', ',') || '' }}",
+          "ccList": "={{ $('Fetch Tasks & Build Prompt').first().json.client['CC Emails']?.replace(';', ',') || '' }}",
           "appendAttribution": false
         }
       },
@@ -98,9 +116,19 @@
       "name": "Create Gmail Draft",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [1570, 300],
-      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } },
-      "parameters_override": { "operation": "createDraft" },
+      "position": [
+        1350,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail"
+        }
+      },
+      "parameters_override": {
+        "operation": "createDraft"
+      },
       "notes": "Creates a DRAFT (not send). Change the operation to 'createDraft' in n8n UI."
     },
     {
@@ -111,7 +139,10 @@
       "name": "Aggregate Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1790, 300]
+      "position": [
+        1570,
+        300
+      ]
     },
     {
       "parameters": {
@@ -123,26 +154,106 @@
       "name": "Notify: Drafts Ready",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [2010, 300],
-      "credentials": { "gmailOAuth2": { "id": "CONFIGURE_ME", "name": "Gmail" } }
+      "position": [
+        1790,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail"
+        }
+      }
     }
   ],
   "connections": {
-    "Friday 11:00 AM": { "main": [[{ "node": "Get Active Clients", "type": "main", "index": 0 }]] },
-    "Get Active Clients": { "main": [[{ "node": "Split by Client", "type": "main", "index": 0 }]] },
-    "Split by Client": {
-      "main": [[
-        { "node": "Get This Week's Tasks", "type": "main", "index": 0 },
-        { "node": "Get Blocked Tasks", "type": "main", "index": 0 }
-      ]]
+    "Friday 11:00 AM": {
+      "main": [
+        [
+          {
+            "node": "Get Active Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Get This Week's Tasks": { "main": [[{ "node": "Build Update Prompt", "type": "main", "index": 0 }]] },
-    "Get Blocked Tasks": { "main": [[{ "node": "Build Update Prompt", "type": "main", "index": 0 }]] },
-    "Build Update Prompt": { "main": [[{ "node": "Claude: Draft Update", "type": "main", "index": 0 }]] },
-    "Claude: Draft Update": { "main": [[{ "node": "Create Gmail Draft", "type": "main", "index": 0 }]] },
-    "Create Gmail Draft": { "main": [[{ "node": "Aggregate Results", "type": "main", "index": 0 }]] },
-    "Aggregate Results": { "main": [[{ "node": "Notify: Drafts Ready", "type": "main", "index": 0 }]] }
+    "Get Active Clients": {
+      "main": [
+        [
+          {
+            "node": "Split by Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split by Client": {
+      "main": [
+        [
+          {
+            "node": "Fetch Tasks & Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Tasks & Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude: Draft Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Draft Update": {
+      "main": [
+        [
+          {
+            "node": "Create Gmail Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Gmail Draft": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Notify: Drafts Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "phase2" }, { "name": "weekly-updates" }]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "phase2"
+    },
+    {
+      "name": "weekly-updates"
+    }
+  ]
 }

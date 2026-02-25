@@ -7,31 +7,53 @@
       "name": "Sub-Workflow Input",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "notes": "Receives: lookup_type ('name' | 'email_domain' | 'clickup_space'), lookup_value"
     },
     {
       "parameters": {
-        "documentId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_ROSTER_SHEET_ID" },
-        "sheetName": { "__rl": true, "mode": "list", "value": "Sheet1" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1IYEGJ4v1UIocHUYuvxBAtq3IDD0cdsZwJo80b0_kPQQ"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        },
         "options": {}
       },
       "id": "read-roster",
       "name": "Read Client Roster",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [470, 300],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Sheets" } }
+      "position": [
+        470,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Look up client by name, email domain, or ClickUp space ID\nconst trigger = $('Sub-Workflow Input').first().json;\nconst clients = $input.all().map(item => item.json);\n\nconst lookupType = trigger.lookup_type;\nconst lookupValue = trigger.lookup_value?.toLowerCase();\n\nlet match = null;\n\nif (lookupType === 'name') {\n  match = clients.find(c => \n    c['Client Name']?.toLowerCase().includes(lookupValue)\n  );\n} else if (lookupType === 'email_domain') {\n  // Extract domain from email and match against primary contact email\n  match = clients.find(c => {\n    const contactEmail = c['Primary Contact Email']?.toLowerCase() || '';\n    const contactDomain = contactEmail.split('@')[1];\n    return contactDomain === lookupValue || contactEmail.includes(lookupValue);\n  });\n} else if (lookupType === 'clickup_space') {\n  match = clients.find(c => c['ClickUp Space ID'] === trigger.lookup_value);\n}\n\nif (!match) {\n  return [{ json: { found: false, lookup_type: lookupType, lookup_value: lookupValue } }];\n}\n\nreturn [{\n  json: {\n    found: true,\n    client_name: match['Client Name'],\n    status: match['Status'],\n    clickup_space_id: match['ClickUp Space ID'],\n    google_drive_folder_id: match['Google Drive Folder ID'],\n    onedrive_folder_path: match['OneDrive Folder Path'],\n    primary_contact_email: match['Primary Contact Email'],\n    primary_contact_name: match['Primary Contact Name'],\n    cc_emails: match['CC Emails'],\n    forecast_sheet_id: match['Forecast Sheet ID'],\n    meeting_day: match['Meeting Day'],\n    meeting_time: match['Meeting Time'],\n    update_preference: match['Update Preference'],\n    retainer_hours: match['Retainer Hours/Month'],\n    hourly_rate: match['Hourly Rate'],\n    toggl_project_id: match['Toggl Project ID'],\n    hubspot_deal_id: match['HubSpot Deal ID'],\n    linkedin_company_url: match['LinkedIn Company URL'],\n    slack_channel: match['Slack Channel'],\n    notes: match['Notes']\n  }\n}];"
+        "jsCode": "// Look up client by name, email domain, or ClickUp space ID\nconst trigger = $('Sub-Workflow Input').first().json;\nconst clients = $input.all().map(item => item.json);\n\nconst lookupType = trigger.lookup_type;\nconst lookupValue = trigger.lookup_value?.toLowerCase();\n\nlet match = null;\n\nif (lookupType === 'name') {\n  match = clients.find(c => \n    c['Client Name']?.toLowerCase().includes(lookupValue)\n  );\n} else if (lookupType === 'email_domain') {\n  // Extract domain from email and match against primary contact email\n  match = clients.find(c => {\n    const contactEmail = c['Primary Contact Email']?.toLowerCase() || '';\n    const contactDomain = contactEmail.split('@')[1];\n    return contactDomain === lookupValue || contactEmail.includes(lookupValue);\n  });\n} else if (lookupType === 'clickup_space') {\n  match = clients.find(c => c['ClickUp Space ID'] === trigger.lookup_value);\n}\n\nif (!match) {\n  return [{ json: { found: false, lookup_type: lookupType, lookup_value: lookupValue } }];\n}\n\nreturn [{\n  json: {\n    found: true,\n    client_name: match['Client Name'],\n    status: match['Status'],\n    clickup_space_id: match['ClickUp Space ID'],\n    google_drive_folder_id: match['Google Drive Folder ID'],\n    primary_contact_email: match['Primary Contact Email'],\n    primary_contact_name: match['Primary Contact Name'],\n    cc_emails: match['CC Emails'],\n    forecast_sheet_id: match['Forecast Sheet ID'],\n    meeting_day: match['Meeting Day'],\n    meeting_time: match['Meeting Time'],\n    update_preference: match['Update Preference'],\n    retainer_hours: match['Retainer Hours/Month'],\n    hourly_rate: match['Hourly Rate'],\n    toggl_project_id: match['Toggl Project ID'],\n    hubspot_deal_id: match['HubSpot Deal ID'],\n    linkedin_company_url: match['LinkedIn Company URL'],\n    slack_channel: match['Slack Channel'],\n    notes: match['Notes']\n  }\n}];"
       },
       "id": "find-client",
       "name": "Find Client Match",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [690, 300]
+      "position": [
+        690,
+        300
+      ]
     },
     {
       "parameters": {},
@@ -39,14 +61,56 @@
       "name": "Return Client Config",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [910, 300]
+      "position": [
+        910,
+        300
+      ]
     }
   ],
   "connections": {
-    "Sub-Workflow Input": { "main": [[{ "node": "Read Client Roster", "type": "main", "index": 0 }]] },
-    "Read Client Roster": { "main": [[{ "node": "Find Client Match", "type": "main", "index": 0 }]] },
-    "Find Client Match": { "main": [[{ "node": "Return Client Config", "type": "main", "index": 0 }]] }
+    "Sub-Workflow Input": {
+      "main": [
+        [
+          {
+            "node": "Read Client Roster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Client Roster": {
+      "main": [
+        [
+          {
+            "node": "Find Client Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Client Match": {
+      "main": [
+        [
+          {
+            "node": "Return Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "shared" }, { "name": "utility" }]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "shared"
+    },
+    {
+      "name": "utility"
+    }
+  ]
 }

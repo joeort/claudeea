@@ -17,7 +17,7 @@
     {
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" },
+        "workflowId": { "__rl": true, "mode": "id", "value": "ywhteyrTqBjEpgjo" },
         "fields": {
           "values": [
             { "name": "system_prompt", "value": "You are a senior RevOps consultant generating tailored proposals for B2B SaaS companies. Your proposals are specific to the prospect's situation (not generic templates), outcome-focused, professionally structured, and confident in tone." },

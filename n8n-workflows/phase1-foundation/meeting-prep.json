@@ -3,21 +3,50 @@
   "nodes": [
     {
       "parameters": {
-        "pollTimes": { "item": [{ "mode": "everyMinute", "value": 15 }] },
-        "calendarId": "primary",
-        "options": {
-          "query": "",
-          "timeMin": "={{ $now.plus({ hours: 1, minutes: 45 }).toISO() }}",
-          "timeMax": "={{ $now.plus({ hours: 2, minutes: 15 }).toISO() }}"
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
         }
       },
-      "id": "calendar-trigger",
-      "name": "Check Calendar (2hr before meetings)",
-      "type": "n8n-nodes-base.googleCalendarTrigger",
+      "id": "schedule-trigger",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [250, 300],
-      "credentials": { "googleCalendarOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Calendar" } },
-      "notes": "Polls every 15 min looking for events ~2 hours from now. Adjust the time window if needed."
+      "position": [
+        150,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendarId": "primary",
+        "returnAll": false,
+        "limit": 5,
+        "options": {
+          "timeMin": "={{ $now.plus({ hours: 1, minutes: 45 }).toISO() }}",
+          "timeMax": "={{ $now.plus({ hours: 2, minutes: 15 }).toISO() }}",
+          "singleEvents": true
+        }
+      },
+      "id": "get-upcoming-events",
+      "name": "Get Upcoming Meetings",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [
+        370,
+        300
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "dZ2lCgJhToJOSI7t",
+          "name": "RevOps Calendar - joe@revopsinflection.com"
+        }
+      }
     },
     {
       "parameters": {
@@ -27,90 +56,100 @@
       "name": "Extract Event Info",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [470, 300]
+      "position": [
+        480,
+        304
+      ]
     },
     {
       "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLIENT_LOOKUP_WORKFLOW_ID" }
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "KonUDndTDNefwnEB"
+        },
+        "options": {}
       },
       "id": "client-lookup",
       "name": "Client Lookup",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [690, 300]
+      "position": [
+        704,
+        304
+      ]
     },
     {
       "parameters": {
         "conditions": {
           "conditions": [
-            { "leftValue": "={{ $json.found }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }
+            {
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
           ]
-        }
+        },
+        "options": {}
       },
       "id": "is-client-meeting",
       "name": "Is Client Meeting?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [910, 300],
+      "position": [
+        912,
+        304
+      ],
       "notes": "Only proceed if we matched a client. Non-client meetings are skipped."
     },
     {
       "parameters": {
-        "url": "=https://api.clickup.com/api/v2/team/CONFIGURE_ME_TEAM_ID/task?space_ids[]={{ $('Client Lookup').first().json.clickup_space_id }}&statuses[]=open&statuses[]=in%20progress&order_by=priority",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {}
-      },
-      "id": "get-clickup-tasks",
-      "name": "Get Open ClickUp Tasks",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1130, 150],
-      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "ClickUp API Key" } },
-      "notes": "Header: Authorization = your ClickUp API token"
-    },
-    {
-      "parameters": {
-        "url": "=https://api.clickup.com/api/v2/team/CONFIGURE_ME_TEAM_ID/task?space_ids[]={{ $('Client Lookup').first().json.clickup_space_id }}&statuses[]=waiting%20on%20client",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {}
-      },
-      "id": "get-waiting-tasks",
-      "name": "Get Waiting on Client Tasks",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1130, 350],
-      "credentials": { "httpHeaderAuth": { "id": "CONFIGURE_ME", "name": "ClickUp API Key" } }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Gather all inputs for agenda generation\nconst eventInfo = $('Extract Event Info').first().json;\nconst clientData = $('Client Lookup').first().json;\n\nconst openTasksRaw = $('Get Open ClickUp Tasks').first().json;\nconst waitingTasksRaw = $('Get Waiting on Client Tasks').first().json;\n\nconst openTasks = (openTasksRaw.tasks || []).map(t => \n  `- [${t.priority?.priority || 'normal'}] ${t.name} (Status: ${t.status?.status || 'open'})`\n).join('\\n') || 'No open tasks';\n\nconst waitingTasks = (waitingTasksRaw.tasks || []).map(t => \n  `- ${t.name} (Created: ${new Date(parseInt(t.date_created)).toLocaleDateString()})`\n).join('\\n') || 'No waiting items';\n\nreturn [{\n  json: {\n    system_prompt: `You are a senior RevOps consultant's AI assistant. You prepare meeting agendas that make client calls highly productive. Your agendas are concise, action-oriented, and ensure nothing falls through the cracks. Style: Direct, professional, no fluff. Time-box every section. Lead with the most important items.`,\n    user_prompt: `Prepare a meeting agenda for my upcoming client call.\\n\\n**Meeting Details:**\\n- Client: ${clientData.client_name}\\n- Date/Time: ${eventInfo.meeting_datetime}\\n- Duration: ${eventInfo.meeting_duration} minutes\\n- Attendees: ${eventInfo.attendees}\\n- Update Preference: ${clientData.update_preference || 'detailed'}\\n\\n**Open ClickUp Tasks (sorted by priority):**\\n${openTasks}\\n\\n**\"Waiting on Client\" Items:**\\n${waitingTasks}\\n\\n**Any special context or topics I want to cover:**\\n${eventInfo.manual_notes}\\n\\n---\\n\\nGenerate a meeting agenda in markdown format with: Quick Wins (2 min), Action Item Review, Priority Discussion Items (top 2-3 with time allocations), Blockers/Needs Client Input, Parking Lot, and Next Steps. Total time allocations must sum to ${eventInfo.meeting_duration} minutes with a 5 min buffer. Flag items open 2+ weeks as overdue.`,\n    model: 'gemini-free',\n    workflow_name: 'meeting-prep',\n    client_name: clientData.client_name,\n    purpose: 'Meeting agenda generation',\n    event_id: eventInfo.event_id,\n    client: clientData\n  }\n}];"
+        "jsCode": "// Gather all inputs for agenda generation\nconst eventInfo = $('Extract Event Info').first().json;\nconst clientData = $('Client Lookup').first().json;\nconst spaceId = clientData.clickup_space_id;\n\n// Fetch open tasks from ClickUp\nconst openTasksRaw = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `https://api.clickup.com/api/v2/team/9011968555/task?space_ids[]=${spaceId}&include_closed=false`,\n  headers: { 'Authorization': 'pk_120226108_5A4ZTPSW5PUZ4YDQR9NP1LR2OPCA5BLX' },\n  json: true\n});\n\n// Fetch waiting-on-client tasks\nconst waitingTasksRaw = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `https://api.clickup.com/api/v2/team/9011968555/task?space_ids[]=${spaceId}&include_closed=false`,\n  headers: { 'Authorization': 'pk_120226108_5A4ZTPSW5PUZ4YDQR9NP1LR2OPCA5BLX' },\n  json: true\n});\n\nconst openTasks = (openTasksRaw.tasks || []).map(t =>\n  `- [${t.priority?.priority || 'normal'}] ${t.name} (Status: ${t.status?.status || 'open'})`\n).join('\\n') || 'No open tasks';\n\nconst waitingTasks = (waitingTasksRaw.tasks || [])\n  .filter(t => t.status?.status?.toLowerCase().includes('waiting'))\n  .map(t =>\n    `- ${t.name} (Created: ${new Date(parseInt(t.date_created)).toLocaleDateString()})`\n  ).join('\\n') || 'No waiting items';\n\nreturn [{\n  json: {\n    system_prompt: `You are a senior RevOps consultant's AI assistant. You prepare meeting agendas that make client calls highly productive. Your agendas are concise, action-oriented, and ensure nothing falls through the cracks. Style: Direct, professional, no fluff. Time-box every section. Lead with the most important items.`,\n    user_prompt: `Prepare a meeting agenda for my upcoming client call.\\n\\n**Meeting Details:**\\n- Client: ${clientData.client_name}\\n- Date/Time: ${eventInfo.meeting_datetime}\\n- Duration: ${eventInfo.meeting_duration} minutes\\n- Attendees: ${eventInfo.attendees}\\n- Update Preference: ${clientData.update_preference || 'detailed'}\\n\\n**Open ClickUp Tasks (sorted by priority):**\\n${openTasks}\\n\\n**\"Waiting on Client\" Items:**\\n${waitingTasks}\\n\\n**Any special context or topics I want to cover:**\\n${eventInfo.manual_notes || 'None specified'}\\n\\n---\\n\\nGenerate a meeting agenda with:\\n1. Quick Win / Opener (2 min) \u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u20ac\udc9d start with a positive update\\n2. Key Discussion Items (time-boxed based on priority)\\n3. Blocked / Needs Client Input (be specific about what you need from them)\\n4. Strategic Topics (if time allows)\\n5. Action Items & Next Steps\\n\\nFormat as clean markdown. Include suggested time allocations that total ${eventInfo.meeting_duration} minutes.`,\n    model: 'gemini-free',\n    workflow_name: 'meeting-prep',\n    client_name: clientData.client_name,\n    purpose: 'Meeting agenda generation'\n  }\n}];"
       },
       "id": "build-prompt",
-      "name": "Build Claude Prompt",
+      "name": "Fetch Tasks & Build Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1350, 250]
+      "position": [
+        1360,
+        256
+      ]
     },
     {
       "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "mode": "id", "value": "CONFIGURE_ME_CLAUDE_WRAPPER_WORKFLOW_ID" }
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ywhteyrTqBjEpgjo"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
       },
       "id": "claude-generate",
       "name": "Claude: Generate Agenda",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1570, 250]
+      "position": [
+        1584,
+        256
+      ]
     },
     {
       "parameters": {
         "resource": "event",
         "operation": "update",
         "calendarId": "primary",
-        "eventId": "={{ $('Build Claude Prompt').first().json.event_id }}",
+        "eventId": "={{ $('Fetch Tasks & Build Prompt').first().json.event_id }}",
         "updateFields": {
           "description": "={{ $json.content }}"
         }
@@ -119,47 +158,137 @@
       "name": "Update Calendar Event",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 3,
-      "position": [1790, 150],
-      "credentials": { "googleCalendarOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Calendar" } }
+      "position": [
+        1792,
+        160
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "dZ2lCgJhToJOSI7t",
+          "name": "RevOps Calendar - joe@revopsinflection.com"
+        }
+      }
     },
     {
       "parameters": {
-        "resource": "document",
-        "operation": "create",
-        "title": "=Agenda: {{ $('Build Claude Prompt').first().json.client.client_name }} - {{ $('Extract Event Info').first().json.meeting_datetime }}",
-        "content": "={{ $json.content }}"
+        "authentication": "oAuth2",
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Fetch Tasks & Build Prompt').first().json.client.google_drive_folder_id }}"
+        },
+        "title": "=Agenda: {{ $('Fetch Tasks & Build Prompt').first().json.client.client_name }} - {{ $('Extract Event Info').first().json.meeting_datetime }}"
       },
       "id": "create-agenda-doc",
       "name": "Create Agenda Google Doc",
       "type": "n8n-nodes-base.googleDocs",
       "typeVersion": 1,
-      "position": [1790, 350],
-      "credentials": { "googleDocsOAuth2Api": { "id": "CONFIGURE_ME", "name": "Google Docs" } }
+      "position": [
+        1792,
+        352
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "bbU1KBLk0uDZ3wms",
+          "name": "Google Docs account"
+        }
+      }
     }
   ],
   "connections": {
-    "Check Calendar (2hr before meetings)": { "main": [[{ "node": "Extract Event Info", "type": "main", "index": 0 }]] },
-    "Extract Event Info": { "main": [[{ "node": "Client Lookup", "type": "main", "index": 0 }]] },
-    "Client Lookup": { "main": [[{ "node": "Is Client Meeting?", "type": "main", "index": 0 }]] },
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Upcoming Meetings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Upcoming Meetings": {
+      "main": [
+        [
+          {
+            "node": "Extract Event Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Event Info": {
+      "main": [
+        [
+          {
+            "node": "Client Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Lookup": {
+      "main": [
+        [
+          {
+            "node": "Is Client Meeting?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Is Client Meeting?": {
       "main": [
         [
-          { "node": "Get Open ClickUp Tasks", "type": "main", "index": 0 },
-          { "node": "Get Waiting on Client Tasks", "type": "main", "index": 0 }
+          {
+            "node": "Fetch Tasks & Build Prompt",
+            "type": "main",
+            "index": 0
+          }
         ],
         []
       ]
     },
-    "Get Open ClickUp Tasks": { "main": [[{ "node": "Build Claude Prompt", "type": "main", "index": 0 }]] },
-    "Get Waiting on Client Tasks": { "main": [[{ "node": "Build Claude Prompt", "type": "main", "index": 0 }]] },
-    "Build Claude Prompt": { "main": [[{ "node": "Claude: Generate Agenda", "type": "main", "index": 0 }]] },
+    "Fetch Tasks & Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude: Generate Agenda",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Claude: Generate Agenda": {
-      "main": [[
-        { "node": "Update Calendar Event", "type": "main", "index": 0 },
-        { "node": "Create Agenda Google Doc", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Update Calendar Event",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Agenda Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "phase1" }, { "name": "meeting-prep" }]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "phase1"
+    },
+    {
+      "name": "meeting-prep"
+    }
+  ]
 }
