@@ -26,18 +26,26 @@ Parses Fathom meeting transcript emails, identifies the client, runs AI analysis
 8. High-severity risk flags trigger immediate email alert
 
 ## Configuration
-- `CONFIGURE_ME_CLICKUP_LIST_ID` — **needs configuration** (action item task list)
-- Gmail credential: needs to be linked
-- Google Drive folder: pulled from Client Roster
+- ~~`CONFIGURE_ME_CLICKUP_LIST_ID`~~ — **resolved**: now dynamically looks up lists from space ID at runtime
+- Gmail credential: linked (Gmail account)
+- Google Docs credential: linked (Google Docs account)
+- Google Drive folder: pulled from Client Roster via client-lookup
 
 ## Integration Points
 - **Calls:** client-lookup, ai-api-wrapper
 - **Reads from:** Gmail (Fathom emails)
-- **Writes to:** ClickUp (tasks), Google Docs (meeting notes), Google Drive (file storage), Gmail (risk alerts)
+- **Writes to:** ClickUp (tasks via API Code node), Google Docs (meeting notes), Google Drive (file storage), Gmail (risk alerts)
 - **Feeds into:** client-health-scoring (engagement_health_delta field)
 
 ## Known Issues
-- ClickUp API calls must use Code nodes (not httpRequest nodes)
+- ClickUp API calls use Code nodes with hardcoded API key (per project convention — credential header format had issues)
+
+## ClickUp Task Creation
+The "Create ClickUp Tasks" node is a Code node (not a native ClickUp node) that:
+1. Gets folderless lists from the client's space via `GET /api/v2/space/{spaceId}/list`
+2. Fuzzy-matches the AI's `list_type` ("Active", "Waiting on Client", "Backlog") to actual list names
+3. Falls back to the first list if no match found
+4. Creates tasks via `POST /api/v2/list/{listId}/task` with name, description, priority, and due date
 
 ## Testing
 - Not independently tested end-to-end
@@ -45,4 +53,5 @@ Parses Fathom meeting transcript emails, identifies the client, runs AI analysis
 ## Changelog
 | Date | Change |
 |------|--------|
+| 2026-02-27 | Replaced native ClickUp node with Code node for dynamic list lookup |
 | 2026-02-24 | Initial import |

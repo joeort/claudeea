@@ -103,21 +103,14 @@
     },
     {
       "parameters": {
-        "resource": "task",
-        "name": "={{ $json.name }}",
-        "list": "CONFIGURE_ME_CLICKUP_LIST_ID",
-        "additionalFields": {
-          "content": "={{ $json.description }}",
-          "priority": "={{ $json.priority }}"
-        }
+        "jsCode": "// Create ClickUp task in the correct list based on AI's list_type\nconst task = $input.all()[0].json;\nconst spaceId = task.client?.clickup_space_id;\n\nif (!spaceId) {\n  throw new Error('No clickup_space_id found in client data');\n}\n\n// Get folderless lists for this space\nconst listsResponse = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `https://api.clickup.com/api/v2/space/${spaceId}/list`,\n  headers: { 'Authorization': 'pk_120226108_5A4ZTPSW5PUZ4YDQR9NP1LR2OPCA5BLX' },\n  json: true\n});\n\nconst lists = listsResponse.lists || [];\n\n// Match AI's list_type to actual list name (fuzzy match)\nconst listType = (task.list_type || 'active').toLowerCase();\nlet targetList = lists.find(l => l.name.toLowerCase().includes(listType));\n\n// Fallback: use the first list if no match\nif (!targetList && lists.length > 0) {\n  targetList = lists[0];\n}\n\nif (!targetList) {\n  throw new Error(`No lists found in space ${spaceId}`);\n}\n\n// Create the task\nconst body = {\n  name: task.name,\n  description: task.description || '',\n  priority: task.priority || 3\n};\n\nif (task.due_date) {\n  const dueMs = new Date(task.due_date).getTime();\n  if (!isNaN(dueMs)) {\n    body.due_date = dueMs;\n  }\n}\n\nconst created = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.clickup.com/api/v2/list/${targetList.id}/task`,\n  headers: {\n    'Authorization': 'pk_120226108_5A4ZTPSW5PUZ4YDQR9NP1LR2OPCA5BLX',\n    'Content-Type': 'application/json'\n  },\n  body: body,\n  json: true\n});\n\nreturn [{ json: { task_id: created.id, task_name: created.name, list_name: targetList.name, url: created.url } }];"
       },
       "id": "create-clickup-tasks",
       "name": "Create ClickUp Tasks",
-      "type": "n8n-nodes-base.clickUp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [2010, 200],
-      "credentials": { "clickUpApi": { "id": "CONFIGURE_ME", "name": "ClickUp" } },
-      "notes": "Configure list IDs based on client's ClickUp space. Use 'Active' for consultant tasks, 'Waiting on Client' for client tasks."
+      "notes": "Creates tasks via ClickUp API. Looks up lists from space ID dynamically, matches AI's list_type to the correct list."
     },
     {
       "parameters": {
