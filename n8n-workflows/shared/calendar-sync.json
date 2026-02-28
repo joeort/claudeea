@@ -1,0 +1,390 @@
+{
+  "name": "calendar-sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "joe@revopsinflection.com",
+          "mode": "list",
+          "cachedResultName": "joe@revopsinflection.com"
+        },
+        "returnAll": true,
+        "options": {
+          "timeMin": "={{ $now.toISO() }}",
+          "timeMax": "={{ $now.plus({ days: 14 }).toISO() }}",
+          "singleEvents": true
+        }
+      },
+      "id": "fetch-revops",
+      "name": "Fetch RevOps Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [
+        400,
+        304
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "dZ2lCgJhToJOSI7t",
+          "name": "RevOps Calendar - joe@revopsinflection.com"
+        }
+      },
+      "notes": "Fetches all events from RevOps calendar (next 14 days)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all RevOps events into a single item\nconst events = $input.all().map(i => i.json);\nreturn [{ json: { source: 'revops', calendarId: 'primary', events } }];"
+      },
+      "id": "aggregate-revops",
+      "name": "Aggregate RevOps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "joe.ort-contractor@blackthorn.io",
+          "mode": "list",
+          "cachedResultName": "joe.ort-contractor@blackthorn.io"
+        },
+        "returnAll": true,
+        "options": {
+          "timeMin": "={{ $now.toISO() }}",
+          "timeMax": "={{ $now.plus({ days: 14 }).toISO() }}",
+          "singleEvents": true
+        }
+      },
+      "id": "fetch-client",
+      "name": "Fetch Client Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [
+        400,
+        512
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "xhKqi8iJDl6w5bh6",
+          "name": "Blackthorn Calendar account"
+        }
+      },
+      "notes": "Fetches all events from Blackthorn client calendar (next 14 days)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all client events into a single item\nconst events = $input.all().map(i => i.json);\nreturn [{ json: { source: 'client', calendarId: 'primary', events } }];"
+      },
+      "id": "aggregate-client",
+      "name": "Aggregate Client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "output": "empty"
+      },
+      "id": "merge-events",
+      "name": "Wait for Both",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        800,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compute sync diff and output individual HTTP action items\nconst SYNC_TAG = 'n8n-calendar-sync';\nconst PREFIX = '[Blackthorn]';\nconst CLIENT_CAL = 'primary';\nconst REVOPS_CAL = 'primary';\nconst REVOPS_EMAIL = 'joe@revopsinflection.com';\nconst CLIENT_EMAIL = 'joe.ort-contractor@blackthorn.io';\n\nconst revopsData = $('Aggregate RevOps').first().json;\nconst clientData = $('Aggregate Client').first().json;\nconst revopsEvents = revopsData.events || [];\nconst clientEvents = clientData.events || [];\n\nfunction isOurSyncedEvent(event) {\n  return event.extendedProperties?.private?.syncSource === SYNC_TAG;\n}\nfunction getSyncSourceId(event) {\n  return event.extendedProperties?.private?.syncSourceId || null;\n}\nfunction getAttendeeEmails(event) {\n  return (event.attendees || []).map(a => (a.email || '').toLowerCase());\n}\n\nconst revopsReal = revopsEvents.filter(e => !isOurSyncedEvent(e));\nconst revopsSynced = revopsEvents.filter(e => isOurSyncedEvent(e));\nconst clientReal = clientEvents.filter(e => !isOurSyncedEvent(e));\nconst clientSynced = clientEvents.filter(e => isOurSyncedEvent(e));\n\nconst actions = [];\n\n// === RevOps -> Client (busy blocks) ===\nconst clientSyncedMap = new Map();\nclientSynced.forEach(e => {\n  const srcId = getSyncSourceId(e);\n  if (srcId) clientSyncedMap.set(srcId, e);\n});\n\nfor (const event of revopsReal) {\n  if (!event.start?.dateTime) continue;\n  if (event.status === 'cancelled') continue;\n  // Skip if client account is already an attendee (event exists on both calendars)\n  const attendees = getAttendeeEmails(event);\n  if (attendees.includes(CLIENT_EMAIL)) { clientSyncedMap.delete(event.id); continue; }\n  const existing = clientSyncedMap.get(event.id);\n  if (existing) {\n    if (existing.start?.dateTime !== event.start?.dateTime || existing.end?.dateTime !== event.end?.dateTime) {\n      actions.push({\n        direction: 'to-client',\n        method: 'PATCH',\n        url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CLIENT_CAL)}/events/${existing.id}`,\n        body: JSON.stringify({\n          start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n          end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n          reminders: { useDefault: false, overrides: [] }\n        })\n      });\n    }\n    clientSyncedMap.delete(event.id);\n  } else {\n    actions.push({\n      direction: 'to-client',\n      method: 'POST',\n      url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CLIENT_CAL)}/events`,\n      body: JSON.stringify({\n        summary: '[Blocked] Busy',\n        start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n        end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n        transparency: 'opaque',\n        visibility: 'private',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG, syncSourceId: event.id } }\n      })\n    });\n  }\n}\nfor (const [srcId, syncedEvent] of clientSyncedMap) {\n  actions.push({\n    direction: 'to-client',\n    method: 'DELETE',\n    url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CLIENT_CAL)}/events/${syncedEvent.id}`,\n    body: '{}'\n  });\n}\n\n// === Client -> RevOps (full copy) ===\nconst revopsSyncedMap = new Map();\nrevopsSynced.forEach(e => {\n  const srcId = getSyncSourceId(e);\n  if (srcId) revopsSyncedMap.set(srcId, e);\n});\n\nfor (const event of clientReal) {\n  if (!event.start?.dateTime) continue;\n  if (event.status === 'cancelled') continue;\n  // Skip if RevOps account is already an attendee (event exists on both calendars)\n  const attendees = getAttendeeEmails(event);\n  if (attendees.includes(REVOPS_EMAIL)) { revopsSyncedMap.delete(event.id); continue; }\n  const existing = revopsSyncedMap.get(event.id);\n  if (existing) {\n    if (existing.start?.dateTime !== event.start?.dateTime || existing.end?.dateTime !== event.end?.dateTime ||\n        existing.summary !== `${PREFIX} ${event.summary || 'Untitled'}` || existing.description !== (event.description || '')) {\n      actions.push({\n        direction: 'to-revops',\n        method: 'PATCH',\n        url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(REVOPS_CAL)}/events/${existing.id}`,\n        body: JSON.stringify({\n          summary: `${PREFIX} ${event.summary || 'Untitled'}`,\n          description: event.description || '',\n          start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n          end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n          reminders: { useDefault: false, overrides: [] }\n        })\n      });\n    }\n    revopsSyncedMap.delete(event.id);\n  } else {\n    actions.push({\n      direction: 'to-revops',\n      method: 'POST',\n      url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(REVOPS_CAL)}/events`,\n      body: JSON.stringify({\n        summary: `${PREFIX} ${event.summary || 'Untitled'}`,\n        description: event.description || '',\n        start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n        end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n        transparency: 'opaque',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG, syncSourceId: event.id } }\n      })\n    });\n  }\n}\nfor (const [srcId, syncedEvent] of revopsSyncedMap) {\n  actions.push({\n    direction: 'to-revops',\n    method: 'DELETE',\n    url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(REVOPS_CAL)}/events/${syncedEvent.id}`,\n    body: '{}'\n  });\n}\n\nif (actions.length === 0) {\n  return [{ json: { direction: 'none', method: 'NONE', url: '', body: '', stats: 'No sync actions needed' } }];\n}\n\nreturn actions.map(a => ({ json: a }));"
+      },
+      "id": "compute-diff",
+      "name": "Compute Diff & Build Actions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        400
+      ],
+      "notes": "Computes diff between real and synced events on both calendars. Outputs one item per API action needed (POST/PATCH/DELETE), with direction, method, URL, and body. Anti-loop: events tagged with syncSource are never re-synced."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.direction }}",
+              "rightValue": "to-client",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "split-direction",
+      "name": "Route by Direction",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        400
+      ],
+      "notes": "Routes actions: TRUE = write to client calendar, FALSE = write to RevOps calendar (or no-op)."
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "write-client",
+      "name": "Write to Client Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        304
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "xhKqi8iJDl6w5bh6",
+          "name": "Blackthorn Calendar account"
+        }
+      },
+      "notes": "Executes create/update/delete on client calendar. Method and URL are dynamic per item from the diff node."
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "write-revops",
+      "name": "Write to RevOps Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        512
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "dZ2lCgJhToJOSI7t",
+          "name": "RevOps Calendar - joe@revopsinflection.com"
+        }
+      },
+      "notes": "Executes create/update/delete on RevOps calendar. Method and URL are dynamic per item from the diff node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Count results from both branches\nconst items = $input.all();\nconst timestamp = new Date().toISOString();\nconst total = items.length;\nconst errors = items.filter(i => i.json.error || (i.json.statusCode && i.json.statusCode >= 400)).length;\n\nreturn [{ json: { status: 'complete', timestamp, totalActions: total, errors } }];"
+      },
+      "id": "log-summary",
+      "name": "Log Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        400
+      ],
+      "notes": "Summarizes sync results."
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch RevOps Events",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Client Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch RevOps Events": {
+      "main": [
+        [
+          {
+            "node": "Aggregate RevOps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate RevOps": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Client Events": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Client": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Wait for Both": {
+      "main": [
+        [
+          {
+            "node": "Compute Diff & Build Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Diff & Build Actions": {
+      "main": [
+        [
+          {
+            "node": "Route by Direction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Direction": {
+      "main": [
+        [
+          {
+            "node": "Write to Client Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write to RevOps Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Client Calendar": {
+      "main": [
+        [
+          {
+            "node": "Log Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to RevOps Calendar": {
+      "main": [
+        [
+          {
+            "node": "Log Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

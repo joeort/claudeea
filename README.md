@@ -5,20 +5,22 @@ n8n-powered automation system for a solo RevOps consultant. Saves 15-20 hours/we
 ## Project Structure
 
 ```
-├── prompts/                      # Claude prompt templates
-│   ├── call-intelligence.md      # Meeting transcript analysis
-│   ├── meeting-prep.md           # Agenda generation
-│   ├── weekly-client-update.md   # Friday status emails
-│   ├── forecast-review.md        # Pipeline analysis (Opus)
-│   ├── linkedin-content.md       # LinkedIn post generation
-│   ├── substack-newsletter.md    # Newsletter drafts (Opus)
-│   ├── proposal-generator.md     # SOW/proposal generation (Opus)
-│   ├── client-health-scoring.md  # Engagement health scoring
-│   ├── lead-scoring.md           # Inbound lead qualification
-│   └── client-onboarding.md      # New client setup materials
+├── CLAUDE.md                        # Project context (auto-loaded by Claude Code)
 │
-├── n8n-workflows/                # Importable n8n workflow JSONs
-│   ├── shared/                   # Utility sub-workflows (import first)
+├── prompts/                         # AI prompt templates (PROMPT_* naming)
+│   ├── PROMPT_meeting-prep-agenda-clickup-tasks-calendar-client-call-preparation.md
+│   ├── PROMPT_call-intelligence-transcript-analysis-action-items-fathom-meeting-summary.md
+│   ├── PROMPT_weekly-client-update-status-email-gmail-draft-friday-report.md
+│   ├── PROMPT_forecast-review-pipeline-analysis-deal-inspection-revenue-opus.md
+│   ├── PROMPT_linkedin-content-generator-post-creation-revops-thought-leadership.md
+│   ├── PROMPT_substack-newsletter-long-form-revops-analysis-email-marketing.md
+│   ├── PROMPT_proposal-generator-sow-pricing-scope-client-engagement-opus.md
+│   ├── PROMPT_client-health-scoring-engagement-risk-retention-churn-signals.md
+│   ├── PROMPT_lead-scoring-inbound-qualification-icp-fit-enrichment.md
+│   └── PROMPT_client-onboarding-new-engagement-google-drive-clickup-workspace.md
+│
+├── n8n-workflows/                   # Importable n8n workflow JSONs
+│   ├── shared/                      # Utility sub-workflows (import first)
 │   │   ├── claude-api-wrapper.json
 │   │   ├── client-lookup.json
 │   │   └── error-handler.json
@@ -39,26 +41,48 @@ n8n-powered automation system for a solo RevOps consultant. Saves 15-20 hours/we
 │       ├── proposal-generator.json
 │       └── client-health-scoring.json
 │
-├── templates/                    # Google Sheets CSV templates
+├── templates/                       # Google Sheets CSV templates
 │   ├── client-roster.csv
 │   ├── automation-errors-sheet.csv
 │   ├── api-cost-log.csv
 │   ├── content-calendar.csv
 │   └── linkedin-analytics.csv
 │
-├── scripts/                      # Test & utility scripts
+├── scripts/                         # Test & utility scripts
 │   ├── test-fathom-email.js
 │   ├── test-forecast-data.js
 │   └── webhook-trigger.sh
 │
 └── docs/
-    ├── setup-guide.md            # Full setup & configuration guide
-    └── voice-tone-guide.md       # LinkedIn/Substack writing guide
+    ├── TECHNICAL_n8n-setup-configuration-google-sheets-credentials-api-keys-import-testing.md
+    ├── PERSONA_linkedin-substack-brand-voice-tone-writing-style-revops-content-guidelines.md
+    ├── TECHNICAL_architecture-decisions-n8n-gemini-claude-google-sheets-clickup-patterns.md
+    ├── TECHNICAL_n8n-integration-patterns-clickup-api-google-sheets-code-node-workarounds.md
+    ├── SCHEMA_project-index-workflow-registry-file-inventory-configuration-status.md
+    ├── filename-generation-keyword-extraction-retrieval-optimization.md
+    └── workflows/                   # Per-workflow companion docs (15 files)
+        ├── ai-api-wrapper.md
+        ├── client-lookup.md
+        ├── meeting-prep.md
+        └── ... (12 more)
 ```
+
+## Documentation Map
+
+| Need | Start Here |
+|------|-----------|
+| First-time setup | `docs/TECHNICAL_n8n-setup-configuration-*.md` |
+| Project overview | `CLAUDE.md` |
+| Architecture decisions | `docs/TECHNICAL_architecture-decisions-*.md` |
+| Integration gotchas | `docs/TECHNICAL_n8n-integration-patterns-*.md` |
+| Specific workflow details | `docs/workflows/{workflow-name}.md` |
+| Content voice/tone | `docs/PERSONA_linkedin-substack-*.md` |
+| Full project inventory | `docs/SCHEMA_project-index-*.md` |
+| File naming methodology | `docs/filename-generation-*.md` |
 
 ## Quick Start
 
-1. Read `docs/setup-guide.md` for full setup instructions
+1. Read `docs/TECHNICAL_n8n-setup-configuration-*.md` for full setup instructions
 2. Create Google Sheets from templates in `templates/`
 3. Import shared workflows first, then phase workflows into n8n
 4. Search for `CONFIGURE_ME` in each workflow and replace with your values
