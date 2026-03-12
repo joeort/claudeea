@@ -1,0 +1,889 @@
+{
+  "updatedAt": "2026-03-04T14:59:14.760Z",
+  "createdAt": "2026-02-03T02:49:28.897Z",
+  "id": "IzSxVR2JHM3OItOnRu5Iq",
+  "name": "calendar-sync-iceberg",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/joe%40revopsinflection.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "timeMin",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "timeMax",
+              "value": "={{ $now.plus({ days: 14 }).toISO() }}"
+            },
+            {
+              "name": "singleEvents",
+              "value": "true"
+            },
+            {
+              "name": "maxResults",
+              "value": "2500"
+            },
+            {
+              "name": "showDeleted",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-revops-ice",
+      "name": "Fetch RevOps Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        304
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "dZ2lCgJhToJOSI7t",
+          "name": "RevOps Calendar - joe@revopsinflection.com"
+        }
+      },
+      "notes": "Fetches all events from RevOps calendar (next 14 days)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate RevOps events from HTTP Request response\nconst data = $input.all()[0].json;\nconst events = data.items || [];\nreturn [{ json: { events, count: events.length } }];"
+      },
+      "id": "aggregate-revops-ice",
+      "name": "Aggregate RevOps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/jort%40icebergops.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "timeMin",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "timeMax",
+              "value": "={{ $now.plus({ days: 14 }).toISO() }}"
+            },
+            {
+              "name": "singleEvents",
+              "value": "true"
+            },
+            {
+              "name": "maxResults",
+              "value": "2500"
+            },
+            {
+              "name": "showDeleted",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-iceberg",
+      "name": "Fetch Iceberg Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        512
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "mNQ6oDJf55C2j6vl",
+          "name": "Iceberg Calendar - jort@icebergops.com"
+        }
+      },
+      "notes": "Fetches all events from Iceberg calendar (next 14 days)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate Iceberg events from HTTP Request response\nconst data = $input.all()[0].json;\nconst events = data.items || [];\nreturn [{ json: { events, count: events.length } }];"
+      },
+      "id": "aggregate-iceberg",
+      "name": "Aggregate Iceberg",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "output": "empty"
+      },
+      "id": "merge-events-ice",
+      "name": "Wait for Both",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        800,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compute sync diff and output individual HTTP action items\nconst SYNC_TAG = 'n8n-calendar-sync-iceberg';\nconst PREFIX = '[Iceberg]';\nconst CLIENT_CAL = 'jort%40icebergops.com';\nconst REVOPS_CAL = 'joe%40revopsinflection.com';\nconst REVOPS_EMAIL = 'joe@revopsinflection.com';\nconst CLIENT_EMAIL = 'jort@icebergops.com';\n\nconst revopsData = $('Aggregate RevOps').first().json;\nconst clientData = $('Aggregate Iceberg').first().json;\nconst revopsEvents = revopsData.events || [];\nconst clientEvents = clientData.events || [];\n\nfunction isOurSyncedEvent(event) {\n  return event.extendedProperties?.private?.syncSource === SYNC_TAG;\n}\nfunction getSyncSourceId(event) {\n  return event.extendedProperties?.private?.syncSourceId || null;\n}\nfunction getAttendeeEmails(event) {\n  return (event.attendees || []).map(a => (a.email || '').toLowerCase());\n}\n\nconst revopsReal = revopsEvents.filter(e => !isOurSyncedEvent(e));\nconst revopsSynced = revopsEvents.filter(e => isOurSyncedEvent(e));\nconst clientReal = clientEvents.filter(e => !isOurSyncedEvent(e));\nconst clientSynced = clientEvents.filter(e => isOurSyncedEvent(e));\n\nconst actions = [];\n\n// === RevOps -> Iceberg (busy blocks) ===\nconst clientSyncedMap = new Map();\nclientSynced.forEach(e => {\n  const srcId = getSyncSourceId(e);\n  if (srcId) clientSyncedMap.set(srcId, e);\n});\n\nfor (const event of revopsReal) {\n  if (!event.start?.dateTime) continue;\n  if (event.status === 'cancelled') continue;\n  const attendees = getAttendeeEmails(event);\n  if (attendees.includes(CLIENT_EMAIL)) { clientSyncedMap.delete(event.id); continue; }\n  const existing = clientSyncedMap.get(event.id);\n  if (existing) {\n    if (existing.start?.dateTime !== event.start?.dateTime || existing.end?.dateTime !== event.end?.dateTime) {\n      actions.push({\n        direction: 'to-client',\n        method: 'PATCH',\n        url: 'https://www.googleapis.com/calendar/v3/calendars/' + CLIENT_CAL + '/events/' + existing.id + '?sendUpdates=none',\n        body: JSON.stringify({\n          start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n          end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n          reminders: { useDefault: false, overrides: [] }\n        })\n      });\n    }\n    clientSyncedMap.delete(event.id);\n  } else {\n    actions.push({\n      direction: 'to-client',\n      method: 'POST',\n      url: 'https://www.googleapis.com/calendar/v3/calendars/' + CLIENT_CAL + '/events?sendUpdates=none',\n      body: JSON.stringify({\n        summary: '[Blocked] Busy',\n        start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n        end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n        transparency: 'opaque',\n        visibility: 'private',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG, syncSourceId: event.id } }\n      })\n    });\n  }\n}\nfor (const [srcId, syncedEvent] of clientSyncedMap) {\n  actions.push({\n    direction: 'to-client',\n    method: 'DELETE',\n    url: 'https://www.googleapis.com/calendar/v3/calendars/' + CLIENT_CAL + '/events/' + syncedEvent.id + '?sendUpdates=none',\n    body: '{}'\n  });\n}\n\n// === Iceberg -> RevOps (full copy with prefix) ===\nconst revopsSyncedMap = new Map();\nrevopsSynced.forEach(e => {\n  const srcId = getSyncSourceId(e);\n  if (srcId) revopsSyncedMap.set(srcId, e);\n});\n\nfor (const event of clientReal) {\n  if (!event.start?.dateTime) continue;\n  if (event.status === 'cancelled') continue;\n  const attendees = getAttendeeEmails(event);\n  if (attendees.includes(REVOPS_EMAIL)) { revopsSyncedMap.delete(event.id); continue; }\n  const existing = revopsSyncedMap.get(event.id);\n  if (existing) {\n    if (existing.start?.dateTime !== event.start?.dateTime || existing.end?.dateTime !== event.end?.dateTime ||\n        existing.summary !== (PREFIX + ' ' + (event.summary || 'Untitled')) || existing.description !== (event.description || '')) {\n      actions.push({\n        direction: 'to-revops',\n        method: 'PATCH',\n        url: 'https://www.googleapis.com/calendar/v3/calendars/' + REVOPS_CAL + '/events/' + existing.id + '?sendUpdates=none',\n        body: JSON.stringify({\n          summary: PREFIX + ' ' + (event.summary || 'Untitled'),\n          description: event.description || '',\n          start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n          end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n          reminders: { useDefault: false, overrides: [] }\n        })\n      });\n    }\n    revopsSyncedMap.delete(event.id);\n  } else {\n    actions.push({\n      direction: 'to-revops',\n      method: 'POST',\n      url: 'https://www.googleapis.com/calendar/v3/calendars/' + REVOPS_CAL + '/events?sendUpdates=none',\n      body: JSON.stringify({\n        summary: PREFIX + ' ' + (event.summary || 'Untitled'),\n        description: event.description || '',\n        start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n        end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n        transparency: 'opaque',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG, syncSourceId: event.id } }\n      })\n    });\n  }\n}\nfor (const [srcId, syncedEvent] of revopsSyncedMap) {\n  actions.push({\n    direction: 'to-revops',\n    method: 'DELETE',\n    url: 'https://www.googleapis.com/calendar/v3/calendars/' + REVOPS_CAL + '/events/' + syncedEvent.id + '?sendUpdates=none',\n    body: '{}'\n  });\n}\n\nif (actions.length === 0) {\n  return [{ json: { method: 'NONE', direction: 'none', stats: 'No sync actions needed' } }];\n}\n\nreturn actions.map(a => ({ json: a }));",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "compute-diff-ice",
+      "name": "Compute Diff & Build Actions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        400
+      ],
+      "notes": "Computes diff between real and synced events on both calendars. Outputs one item per API action needed (POST/PATCH/DELETE), with direction, method, URL, and body. Anti-loop: events tagged with syncSource are never re-synced."
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.method === 'NONE' ? '' : $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "write-iceberg",
+      "name": "Write to Iceberg Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        304
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "mNQ6oDJf55C2j6vl",
+          "name": "Iceberg Calendar - jort@icebergops.com"
+        }
+      },
+      "notes": "Executes create/update/delete on client calendar. Method and URL are dynamic per item from the diff node."
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.method === 'NONE' ? '' : $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "write-revops-ice",
+      "name": "Write to RevOps Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        512
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "dZ2lCgJhToJOSI7t",
+          "name": "RevOps Calendar - joe@revopsinflection.com"
+        }
+      },
+      "notes": "Executes create/update/delete on RevOps calendar. Method and URL are dynamic per item from the diff node."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Count results from both branches\nconst items = $input.all();\nconst timestamp = new Date().toISOString();\nconst total = items.length;\nconst errors = items.filter(i => i.json.error || (i.json.statusCode && i.json.statusCode >= 400)).length;\n\nreturn [{ json: { status: 'complete', timestamp, totalActions: total, errors } }];"
+      },
+      "id": "log-summary-ice",
+      "name": "Log Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        400
+      ],
+      "notes": "Summarizes sync results."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.direction }}",
+              "operation": "equal",
+              "value2": "to-client"
+            }
+          ]
+        }
+      },
+      "id": "route-direction-ice",
+      "name": "Route by Direction",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1356,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch RevOps Events",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Iceberg Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch RevOps Events": {
+      "main": [
+        [
+          {
+            "node": "Aggregate RevOps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate RevOps": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Iceberg Events": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Iceberg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Iceberg": {
+      "main": [
+        [
+          {
+            "node": "Wait for Both",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Wait for Both": {
+      "main": [
+        [
+          {
+            "node": "Compute Diff & Build Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Diff & Build Actions": {
+      "main": [
+        [
+          {
+            "node": "Route by Direction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Iceberg Calendar": {
+      "main": [
+        [
+          {
+            "node": "Log Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to RevOps Calendar": {
+      "main": [
+        [
+          {
+            "node": "Log Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Direction": {
+      "main": [
+        [
+          {
+            "node": "Write to Iceberg Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write to RevOps Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": {
+    "node:Every 15 Minutes": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": {},
+  "versionId": "6d3d10f8-8197-4e72-af0e-151c28258ce9",
+  "activeVersionId": "6d3d10f8-8197-4e72-af0e-151c28258ce9",
+  "versionCounter": 41,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-02-03T02:49:28.900Z",
+      "createdAt": "2026-02-03T02:49:28.900Z",
+      "role": "workflow:owner",
+      "workflowId": "IzSxVR2JHM3OItOnRu5Iq",
+      "projectId": "7ytcmZW1jD7A4yoR",
+      "project": {
+        "updatedAt": "2026-01-28T02:02:39.316Z",
+        "createdAt": "2026-01-28T01:59:51.814Z",
+        "id": "7ytcmZW1jD7A4yoR",
+        "name": "joe ort <joe@revopsinflection.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "11b3d972-b214-4696-9840-d5c4e40200b5"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-04T14:59:14.763Z",
+    "createdAt": "2026-03-04T14:59:14.763Z",
+    "versionId": "6d3d10f8-8197-4e72-af0e-151c28258ce9",
+    "workflowId": "IzSxVR2JHM3OItOnRu5Iq",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes",
+                "minutesInterval": 15
+              }
+            ]
+          }
+        },
+        "id": "schedule-trigger",
+        "name": "Every 15 Minutes",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          160,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "https://www.googleapis.com/calendar/v3/calendars/joe%40revopsinflection.com/events",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "googleCalendarOAuth2Api",
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "timeMin",
+                "value": "={{ $now.toISO() }}"
+              },
+              {
+                "name": "timeMax",
+                "value": "={{ $now.plus({ days: 14 }).toISO() }}"
+              },
+              {
+                "name": "singleEvents",
+                "value": "true"
+              },
+              {
+                "name": "maxResults",
+                "value": "2500"
+              },
+              {
+                "name": "showDeleted",
+                "value": "true"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "fetch-revops-ice",
+        "name": "Fetch RevOps Events",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          400,
+          304
+        ],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "dZ2lCgJhToJOSI7t",
+            "name": "RevOps Calendar - joe@revopsinflection.com"
+          }
+        },
+        "notes": "Fetches all events from RevOps calendar (next 14 days)."
+      },
+      {
+        "parameters": {
+          "jsCode": "// Aggregate RevOps events from HTTP Request response\nconst data = $input.all()[0].json;\nconst events = data.items || [];\nreturn [{ json: { events, count: events.length } }];"
+        },
+        "id": "aggregate-revops-ice",
+        "name": "Aggregate RevOps",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          608,
+          304
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "https://www.googleapis.com/calendar/v3/calendars/jort%40icebergops.com/events",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "googleCalendarOAuth2Api",
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "timeMin",
+                "value": "={{ $now.toISO() }}"
+              },
+              {
+                "name": "timeMax",
+                "value": "={{ $now.plus({ days: 14 }).toISO() }}"
+              },
+              {
+                "name": "singleEvents",
+                "value": "true"
+              },
+              {
+                "name": "maxResults",
+                "value": "2500"
+              },
+              {
+                "name": "showDeleted",
+                "value": "true"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "fetch-iceberg",
+        "name": "Fetch Iceberg Events",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          400,
+          512
+        ],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "mNQ6oDJf55C2j6vl",
+            "name": "Iceberg Calendar - jort@icebergops.com"
+          }
+        },
+        "notes": "Fetches all events from Iceberg calendar (next 14 days)."
+      },
+      {
+        "parameters": {
+          "jsCode": "// Aggregate Iceberg events from HTTP Request response\nconst data = $input.all()[0].json;\nconst events = data.items || [];\nreturn [{ json: { events, count: events.length } }];"
+        },
+        "id": "aggregate-iceberg",
+        "name": "Aggregate Iceberg",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          608,
+          512
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "chooseBranch",
+          "output": "empty"
+        },
+        "id": "merge-events-ice",
+        "name": "Wait for Both",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3,
+        "position": [
+          800,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Compute sync diff and output individual HTTP action items\nconst SYNC_TAG = 'n8n-calendar-sync-iceberg';\nconst PREFIX = '[Iceberg]';\nconst CLIENT_CAL = 'jort%40icebergops.com';\nconst REVOPS_CAL = 'joe%40revopsinflection.com';\nconst REVOPS_EMAIL = 'joe@revopsinflection.com';\nconst CLIENT_EMAIL = 'jort@icebergops.com';\n\nconst revopsData = $('Aggregate RevOps').first().json;\nconst clientData = $('Aggregate Iceberg').first().json;\nconst revopsEvents = revopsData.events || [];\nconst clientEvents = clientData.events || [];\n\nfunction isOurSyncedEvent(event) {\n  return event.extendedProperties?.private?.syncSource === SYNC_TAG;\n}\nfunction getSyncSourceId(event) {\n  return event.extendedProperties?.private?.syncSourceId || null;\n}\nfunction getAttendeeEmails(event) {\n  return (event.attendees || []).map(a => (a.email || '').toLowerCase());\n}\n\nconst revopsReal = revopsEvents.filter(e => !isOurSyncedEvent(e));\nconst revopsSynced = revopsEvents.filter(e => isOurSyncedEvent(e));\nconst clientReal = clientEvents.filter(e => !isOurSyncedEvent(e));\nconst clientSynced = clientEvents.filter(e => isOurSyncedEvent(e));\n\nconst actions = [];\n\n// === RevOps -> Iceberg (busy blocks) ===\nconst clientSyncedMap = new Map();\nclientSynced.forEach(e => {\n  const srcId = getSyncSourceId(e);\n  if (srcId) clientSyncedMap.set(srcId, e);\n});\n\nfor (const event of revopsReal) {\n  if (!event.start?.dateTime) continue;\n  if (event.status === 'cancelled') continue;\n  const attendees = getAttendeeEmails(event);\n  if (attendees.includes(CLIENT_EMAIL)) { clientSyncedMap.delete(event.id); continue; }\n  const existing = clientSyncedMap.get(event.id);\n  if (existing) {\n    if (existing.start?.dateTime !== event.start?.dateTime || existing.end?.dateTime !== event.end?.dateTime) {\n      actions.push({\n        direction: 'to-client',\n        method: 'PATCH',\n        url: 'https://www.googleapis.com/calendar/v3/calendars/' + CLIENT_CAL + '/events/' + existing.id,\n        body: JSON.stringify({\n          start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n          end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n          reminders: { useDefault: false, overrides: [] }\n        })\n      });\n    }\n    clientSyncedMap.delete(event.id);\n  } else {\n    actions.push({\n      direction: 'to-client',\n      method: 'POST',\n      url: 'https://www.googleapis.com/calendar/v3/calendars/' + CLIENT_CAL + '/events',\n      body: JSON.stringify({\n        summary: '[Blocked] Busy',\n        start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n        end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n        transparency: 'opaque',\n        visibility: 'private',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG, syncSourceId: event.id } }\n      })\n    });\n  }\n}\nfor (const [srcId, syncedEvent] of clientSyncedMap) {\n  actions.push({\n    direction: 'to-client',\n    method: 'DELETE',\n    url: 'https://www.googleapis.com/calendar/v3/calendars/' + CLIENT_CAL + '/events/' + syncedEvent.id,\n    body: '{}'\n  });\n}\n\n// === Iceberg -> RevOps (full copy with prefix) ===\nconst revopsSyncedMap = new Map();\nrevopsSynced.forEach(e => {\n  const srcId = getSyncSourceId(e);\n  if (srcId) revopsSyncedMap.set(srcId, e);\n});\n\nfor (const event of clientReal) {\n  if (!event.start?.dateTime) continue;\n  if (event.status === 'cancelled') continue;\n  const attendees = getAttendeeEmails(event);\n  if (attendees.includes(REVOPS_EMAIL)) { revopsSyncedMap.delete(event.id); continue; }\n  const existing = revopsSyncedMap.get(event.id);\n  if (existing) {\n    if (existing.start?.dateTime !== event.start?.dateTime || existing.end?.dateTime !== event.end?.dateTime ||\n        existing.summary !== (PREFIX + ' ' + (event.summary || 'Untitled')) || existing.description !== (event.description || '')) {\n      actions.push({\n        direction: 'to-revops',\n        method: 'PATCH',\n        url: 'https://www.googleapis.com/calendar/v3/calendars/' + REVOPS_CAL + '/events/' + existing.id,\n        body: JSON.stringify({\n          summary: PREFIX + ' ' + (event.summary || 'Untitled'),\n          description: event.description || '',\n          start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n          end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n          reminders: { useDefault: false, overrides: [] }\n        })\n      });\n    }\n    revopsSyncedMap.delete(event.id);\n  } else {\n    actions.push({\n      direction: 'to-revops',\n      method: 'POST',\n      url: 'https://www.googleapis.com/calendar/v3/calendars/' + REVOPS_CAL + '/events',\n      body: JSON.stringify({\n        summary: PREFIX + ' ' + (event.summary || 'Untitled'),\n        description: event.description || '',\n        start: { dateTime: event.start.dateTime, timeZone: event.start.timeZone || 'America/New_York' },\n        end: { dateTime: event.end.dateTime, timeZone: event.end.timeZone || 'America/New_York' },\n        transparency: 'opaque',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG, syncSourceId: event.id } }\n      })\n    });\n  }\n}\nfor (const [srcId, syncedEvent] of revopsSyncedMap) {\n  actions.push({\n    direction: 'to-revops',\n    method: 'DELETE',\n    url: 'https://www.googleapis.com/calendar/v3/calendars/' + REVOPS_CAL + '/events/' + syncedEvent.id,\n    body: '{}'\n  });\n}\n\nif (actions.length === 0) {\n  return [{ json: { method: 'NONE', direction: 'none', stats: 'No sync actions needed' } }];\n}\n\nreturn actions.map(a => ({ json: a }));",
+          "mode": "runOnceForAllItems"
+        },
+        "id": "compute-diff-ice",
+        "name": "Compute Diff & Build Actions",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1056,
+          400
+        ],
+        "notes": "Computes diff between real and synced events on both calendars. Outputs one item per API action needed (POST/PATCH/DELETE), with direction, method, URL, and body. Anti-loop: events tagged with syncSource are never re-synced."
+      },
+      {
+        "parameters": {
+          "method": "={{ $json.method }}",
+          "url": "={{ $json.method === 'NONE' ? '' : $json.url }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "googleCalendarOAuth2Api",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.body }}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            },
+            "batching": {
+              "batch": {
+                "batchSize": 3,
+                "batchInterval": 1000
+              }
+            }
+          }
+        },
+        "id": "write-iceberg",
+        "name": "Write to Iceberg Calendar",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1552,
+          304
+        ],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "mNQ6oDJf55C2j6vl",
+            "name": "Iceberg Calendar - jort@icebergops.com"
+          }
+        },
+        "notes": "Executes create/update/delete on client calendar. Method and URL are dynamic per item from the diff node."
+      },
+      {
+        "parameters": {
+          "method": "={{ $json.method }}",
+          "url": "={{ $json.method === 'NONE' ? '' : $json.url }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "googleCalendarOAuth2Api",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.body }}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            },
+            "batching": {
+              "batch": {
+                "batchSize": 3,
+                "batchInterval": 1000
+              }
+            }
+          }
+        },
+        "id": "write-revops-ice",
+        "name": "Write to RevOps Calendar",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1552,
+          512
+        ],
+        "credentials": {
+          "googleCalendarOAuth2Api": {
+            "id": "dZ2lCgJhToJOSI7t",
+            "name": "RevOps Calendar - joe@revopsinflection.com"
+          }
+        },
+        "notes": "Executes create/update/delete on RevOps calendar. Method and URL are dynamic per item from the diff node."
+      },
+      {
+        "parameters": {
+          "jsCode": "// Count results from both branches\nconst items = $input.all();\nconst timestamp = new Date().toISOString();\nconst total = items.length;\nconst errors = items.filter(i => i.json.error || (i.json.statusCode && i.json.statusCode >= 400)).length;\n\nreturn [{ json: { status: 'complete', timestamp, totalActions: total, errors } }];"
+        },
+        "id": "log-summary-ice",
+        "name": "Log Summary",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1808,
+          400
+        ],
+        "notes": "Summarizes sync results."
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "string": [
+              {
+                "value1": "={{ $json.direction }}",
+                "operation": "equal",
+                "value2": "to-client"
+              }
+            ]
+          }
+        },
+        "id": "route-direction-ice",
+        "name": "Route by Direction",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [
+          1356,
+          400
+        ]
+      }
+    ],
+    "connections": {
+      "Every 15 Minutes": {
+        "main": [
+          [
+            {
+              "node": "Fetch RevOps Events",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Fetch Iceberg Events",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch RevOps Events": {
+        "main": [
+          [
+            {
+              "node": "Aggregate RevOps",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate RevOps": {
+        "main": [
+          [
+            {
+              "node": "Wait for Both",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Iceberg Events": {
+        "main": [
+          [
+            {
+              "node": "Aggregate Iceberg",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate Iceberg": {
+        "main": [
+          [
+            {
+              "node": "Wait for Both",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Wait for Both": {
+        "main": [
+          [
+            {
+              "node": "Compute Diff & Build Actions",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Compute Diff & Build Actions": {
+        "main": [
+          [
+            {
+              "node": "Route by Direction",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Write to Iceberg Calendar": {
+        "main": [
+          [
+            {
+              "node": "Log Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Write to RevOps Calendar": {
+        "main": [
+          [
+            {
+              "node": "Log Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route by Direction": {
+        "main": [
+          [
+            {
+              "node": "Write to Iceberg Calendar",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Write to RevOps Calendar",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "joe ort",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-04T14:59:22.323Z",
+        "id": 38,
+        "workflowId": "IzSxVR2JHM3OItOnRu5Iq",
+        "versionId": "6d3d10f8-8197-4e72-af0e-151c28258ce9",
+        "event": "activated",
+        "userId": "11b3d972-b214-4696-9840-d5c4e40200b5"
+      }
+    ]
+  }
+}

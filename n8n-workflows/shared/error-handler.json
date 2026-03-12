@@ -71,17 +71,11 @@
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": false
-          },
-          "conditions": [
+          "string": [
             {
-              "leftValue": "={{ $json.severity }}",
-              "rightValue": "critical",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
+              "value1": "={{ $json.severity }}",
+              "operation": "equals",
+              "value2": "critical"
             }
           ]
         }
@@ -89,7 +83,7 @@
       "id": "check-severity",
       "name": "Is Critical?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [
         910,
         300

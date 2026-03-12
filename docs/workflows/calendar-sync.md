@@ -42,13 +42,14 @@ Events where both accounts are attendees (shared meetings) are skipped entirely.
 | Aggregate Client | Code | — | Collect all client events into array |
 | Wait for Both | Merge | — | Wait for both fetches to complete |
 | Compute Diff & Build Actions | Code | — | Core sync logic: filter, diff, build action items |
-| Route by Direction | IF | — | Split actions by target calendar |
+| Compute Diff (output 0) | — | — | Routes to-client actions directly |
+| Compute Diff (output 1) | — | — | Routes to-revops actions directly |
 | Write to Client Calendar | HTTP Request | Blackthorn OAuth2 | Create/update/delete busy blocks |
 | Write to RevOps Calendar | HTTP Request | RevOps OAuth2 | Create/update/delete full copies |
 | Log Summary | Code | — | Output sync summary |
 
 **Why this architecture:**
-- **Google Calendar nodes** for reads: native OAuth2 authentication, no credential ID management
+- **HTTP Request nodes** for reads: avoids n8n Calendar node v1.3 strict validation that blocks activation
 - **HTTP Request nodes** for writes: support `extendedProperties` (native Calendar nodes don't)
 - **Code nodes** for logic only: n8n Code node sandbox doesn't have `URLSearchParams` or `httpRequestWithAuthentication`
 
@@ -62,7 +63,7 @@ Events where both accounts are attendees (shared meetings) are skipped entirely.
    - Skips shared meetings (both accounts are attendees)
    - Computes creates/updates/deletes for both directions
    - Outputs individual action items with method, URL, and body
-6. Route by Direction: splits actions to client vs RevOps calendar
+6. Compute Diff dual output: output 0 → client actions, output 1 → RevOps actions (no IF node needed)
 7. Write to Client Calendar: execute actions with batching (3 per batch, 1s interval)
 8. Write to RevOps Calendar: execute actions with batching (3 per batch, 1s interval)
 9. Log Summary
@@ -85,11 +86,18 @@ Events where both accounts are attendees (shared meetings) are skipped entirely.
 ### Still needed:
 - [ ] Disable any existing Zapier calendar sync zap
 - [ ] Clean up duplicate events from initial test run (March 3 duplicates)
+- [ ] Verify Iceberg calendar-sync bidirectional sync works end-to-end
 
 ## Integration Points
-- **Reads from:** Google Calendar API (both accounts via native nodes)
+- **Reads from:** Google Calendar API (both accounts via HTTP Request nodes)
 - **Writes to:** Google Calendar API (both accounts via HTTP Request nodes)
 - **No sub-workflow calls** (standalone utility)
+
+## Cancellation & Rescheduling Handling
+- **Cancelled events**: When a source event is cancelled, the synced copy on the target calendar is automatically deleted in the next sync cycle. Uses `showDeleted=true` on Google Calendar API to detect cancelled events.
+- **Rescheduled events**: When a source event is moved to a different time (same event ID), the synced copy is automatically updated via PATCH in the next sync cycle.
+- **Recurring event instances**: With `singleEvents=true`, each recurring instance is synced independently. Cancelling one instance of a recurring series deletes only that instance's synced copy.
+- **All-day events**: Skipped (only timed events with `start.dateTime` are synced).
 
 ## Known Issues
 - Google Calendar nodes in n8n don't support `extendedProperties`, so write operations use HTTP Request nodes with predefined OAuth2 credentials
@@ -119,3 +127,10 @@ Events where both accounts are attendees (shared meetings) are skipped entirely.
 | 2026-02-27 | Added shared meeting deduplication (attendee email check) |
 | 2026-02-27 | Disabled reminders on all synced events |
 | 2026-02-27 | Fixed DELETE body: empty string → `{}` to avoid JSON parse error |
+| 2026-03-04 | Removed IF "Route by Direction" node — replaced with Code node dual output to fix routing bug |
+| 2026-03-04 | Converted Calendar fetch nodes to HTTP Request nodes (Calendar v1.3 validation blocked activation) |
+| 2026-03-04 | Created Iceberg calendar-sync (`IzSxVR2JHM3OItOnRu5Iq`) using same architecture |
+| 2026-03-05 | Fixed Code node: added `numberOfOutputs: 2` (n8n validation rejected dual-output return) |
+| 2026-03-05 | Added `showDeleted=true` to fetch nodes for cancellation handling |
+| 2026-03-05 | Removed `orderBy=startTime` from fetch nodes (incompatible with `showDeleted=true`; map-based processing doesn't need ordering) |
+| 2026-03-05 | Added cancellation handling: cancelled source events now trigger DELETE of their synced copies |

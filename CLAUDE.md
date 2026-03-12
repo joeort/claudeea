@@ -25,7 +25,7 @@ n8n-powered automation system for a solo RevOps consultant (B2B SaaS, $10-100M A
 | ai-api-wrapper | `ywhteyrTqBjEpgjo` | Gemini 2.5 Pro | Active | Shared |
 | client-lookup | `KonUDndTDNefwnEB` | — | Active, Tested | Shared |
 | error-handler | `4hiumJ5C9tlJwRBI` | — | Active | Shared |
-| call-intelligence | `LtDiO3rtO4OAMWmp` | Gemini 2.5 Pro | Active | Phase 1 |
+| call-intelligence | `LtDiO3rtO4OAMWmp` | Gemini 2.5 Pro | Active, Tested | Phase 1 |
 | meeting-prep | `Uldzen1iaokPSlbI` | Gemini 2.0 Flash | Active, Tested | Phase 1 |
 | forecast-review | `5YcSvoLx51NpZrEs` | Claude Opus | Active | Phase 2 |
 | weekly-client-updates | `jPsuoKNJrjuUrHfC` | Gemini 2.0 Flash | Active | Phase 2 |
@@ -38,11 +38,12 @@ n8n-powered automation system for a solo RevOps consultant (B2B SaaS, $10-100M A
 | proposal-generator | `gQsI1k4enWhiz4FA` | Claude Opus | Active | Phase 4 |
 | client-health-scoring | `9bHD89u72BCq1YZH` | Gemini 2.0 Flash | Active | Phase 4 |
 | calendar-sync | `Xe4FrbXLSfHoGuWb` | — | Active | Shared |
+| calendar-sync-iceberg | `IzSxVR2JHM3OItOnRu5Iq` | — | Active | Shared |
 
 ## File Navigation
 ```
 ├── prompts/           → PROMPT_*.md files (10 AI prompt templates, one per workflow)
-├── n8n-workflows/     → 16 workflow JSONs (shared/ → phase1/ → phase2/ → phase3/ → phase4/)
+├── n8n-workflows/     → 17 workflow JSONs (shared/ → phase1/ → phase2/ → phase3/ → phase4/)
 ├── templates/         → 5 Google Sheets CSV templates
 ├── scripts/           → Test & utility scripts
 ├── docs/              → Setup guide, voice/tone guide, architecture docs, filename methodology
@@ -64,6 +65,11 @@ n8n-powered automation system for a solo RevOps consultant (B2B SaaS, $10-100M A
 - **Google Calendar extendedProperties**: Native Calendar nodes don't support them — use HTTP Request nodes with predefined OAuth2 credentials for writes that need custom properties
 - **Google Calendar API rate limits**: Batch HTTP Request node calls (batchSize: 3, batchInterval: 1000ms) to avoid 429 errors
 - **HTTP Request DELETE body**: Must send `'{}'` not empty string `''` to avoid JSON parse errors
+- **IF node v2 bug**: IF node v2 has a `caseSensitive` undefined error in current n8n version — use IF node v1 (`typeVersion: 1`) with `conditions.string` format instead
+- **n8n Code node multi-output**: Code node v2 `runOnceForAllItems` does NOT support returning `[[...], [...]]` for multi-output — use single flat array output and route with an IF node
+- **Google Calendar nodes**: n8n v1.3 Calendar node validation is strict and may block activation — use HTTP Request nodes with `predefinedCredentialType: googleCalendarOAuth2Api` as a reliable alternative
+- **Gmail node body stripping**: n8n Gmail trigger/get nodes strip body content for HTML-only emails (returns only ~200 char `snippet`). Use HTTP Request node with `predefinedCredentialType: gmailOAuth2` calling Gmail API `format=full`, then decode base64url body in a Code node.
+- **Google Docs node content bug**: n8n Google Docs node `create` operation silently drops the `content` parameter (creates empty doc). Use two HTTP Request nodes instead: (1) Drive API `POST /drive/v3/files` to create empty doc, (2) Drive API upload `PATCH /upload/drive/v3/files/{id}?uploadType=media` with `Content-Type: text/html` to write content. Both use `predefinedCredentialType: googleDocsOAuth2Api`.
 
 ## Configuration Status
 **Done:** Client Roster Sheet ID, Client Lookup Workflow ID, Claude Wrapper Workflow ID, n8n URL, Google Sheets credential, Google Drive (OneDrive fully replaced)
