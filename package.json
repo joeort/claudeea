@@ -1,0 +1,9 @@
+{
+  "name": "revops-consulting-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "node-html-parser": "^6.1.13",
+    "turndown": "^7.2.0"
+  }
+}

@@ -1,0 +1,250 @@
+{
+  "name": "blog-content-sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://revopsinflection.substack.com/feed",
+        "options": {}
+      },
+      "id": "fetch-rss",
+      "name": "Fetch RSS Feed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse RSS XML and extract post slugs + metadata\nconst xml = $input.first().json.data;\n\n// Extract all <item> blocks\nconst items = [];\nconst itemRegex = /<item>([\\s\\S]*?)<\\/item>/g;\nlet match;\nwhile ((match = itemRegex.exec(xml)) !== null) {\n  const item = match[1];\n  const title = (item.match(/<title><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/title>/) || item.match(/<title>([^<]+)<\\/title>/) || [])[1] || '';\n  const link = (item.match(/<link>([^<]+)<\\/link>/) || [])[1] || '';\n  const pubDate = (item.match(/<pubDate>([^<]+)<\\/pubDate>/) || [])[1] || '';\n  const slug = link.split('/p/')[1]?.replace(/\\/$/, '') || '';\n  if (slug) items.push({ title: title.trim(), link: link.trim(), pubDate: pubDate.trim(), slug });\n}\n\nreturn [{ json: { items } }];"
+      },
+      "id": "parse-rss",
+      "name": "Parse RSS Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/joeort/claudeea/contents/content/blog",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.githubPat.token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "list-repo-files",
+      "name": "List Repo Blog Files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find posts in RSS that don't exist in the repo yet\nconst rssItems = $('Parse RSS Items').first().json.items;\nconst repoFiles = $input.first().json; // array of GitHub file objects\n\n// Extract slugs from repo filenames (format: YYYY-MM-DD-{slug}.md)\nconst existingSlugs = new Set(\n  repoFiles\n    .filter(f => f.name.endsWith('.md') && f.name !== 'INDEX.md')\n    .map(f => f.name.replace(/^\\d{4}-\\d{2}-\\d{2}-/, '').replace(/\\.md$/, ''))\n);\n\nconst newPosts = rssItems.filter(item => !existingSlugs.has(item.slug));\n\nconsole.log(`RSS items: ${rssItems.length}, existing in repo: ${existingSlugs.size}, new: ${newPosts.length}`);\n\nif (newPosts.length === 0) return [{ json: { newPosts: [], hasNew: false } }];\nreturn [{ json: { newPosts, hasNew: true } }];"
+      },
+      "id": "find-new-posts",
+      "name": "Find New Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.hasNew }}",
+              "value2": "true"
+            }
+          ]
+        }
+      },
+      "id": "if-new-posts",
+      "name": "New Posts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "newPosts",
+        "options": {}
+      },
+      "id": "split-posts",
+      "name": "Split Posts",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/joeort/claudeea/dispatches",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.githubPat.token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "event_type": "new-blog-post",
+          "client_payload": {
+            "url": "={{ $json.link }}",
+            "title": "={{ $json.title }}",
+            "slug": "={{ $json.slug }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "trigger-actions",
+      "name": "Trigger GitHub Actions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log that no new posts were found — nothing to do\nconsole.log('No new posts found in RSS feed.');\nreturn [{ json: { status: 'no_new_posts' } }];"
+      },
+      "id": "no-new-posts",
+      "name": "No New Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    }
+  ],
+  "connections": {
+    "Daily 9 AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch RSS Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch RSS Feed": {
+      "main": [
+        [
+          {
+            "node": "Parse RSS Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse RSS Items": {
+      "main": [
+        [
+          {
+            "node": "List Repo Blog Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Repo Blog Files": {
+      "main": [
+        [
+          {
+            "node": "Find New Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find New Posts": {
+      "main": [
+        [
+          {
+            "node": "New Posts?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Posts?": {
+      "main": [
+        [
+          {
+            "node": "Split Posts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No New Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Posts": {
+      "main": [
+        [
+          {
+            "node": "Trigger GitHub Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "id": "hkbAl6wcBPBggBnt",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

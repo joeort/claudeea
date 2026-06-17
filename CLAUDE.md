@@ -37,15 +37,18 @@ n8n-powered automation system for a solo RevOps consultant (B2B SaaS, $10-100M A
 | client-onboarding | `jKofWbl2Kr1GRkYo` | Gemini 2.0 Flash | Active | Phase 4 |
 | proposal-generator | `gQsI1k4enWhiz4FA` | Claude Opus | Active | Phase 4 |
 | client-health-scoring | `9bHD89u72BCq1YZH` | Gemini 2.0 Flash | Active | Phase 4 |
-| calendar-sync | `Xe4FrbXLSfHoGuWb` | — | Active | Shared |
-| calendar-sync-iceberg | `IzSxVR2JHM3OItOnRu5Iq` | — | Active | Shared |
+| calendar-sync-unified | `Xe4FrbXLSfHoGuWb` | — | Active | Shared |
+| calendar-sync-iceberg | `IzSxVR2JHM3OItOnRu5Iq` | — | Inactive (archived) | Shared |
+| blog-content-sync | `hkbAl6wcBPBggBnt` | — | Inactive (needs credential wiring) | Shared |
 
 ## File Navigation
 ```
 ├── prompts/           → PROMPT_*.md files (10 AI prompt templates, one per workflow)
-├── n8n-workflows/     → 17 workflow JSONs (shared/ → phase1/ → phase2/ → phase3/ → phase4/)
+├── n8n-workflows/     → 18 workflow JSONs (shared/ → phase1/ → phase2/ → phase3/ → phase4/)
 ├── templates/         → 5 Google Sheets CSV templates
 ├── scripts/           → Test & utility scripts
+├── content/
+│   └── blog/          → 33 Substack posts as markdown (INDEX.md = full index with summaries)
 ├── docs/              → Setup guide, voice/tone guide, architecture docs, filename methodology
 │   └── workflows/     → Per-workflow companion docs (operational reference)
 └── CLAUDE.md          → This file
@@ -72,8 +75,8 @@ n8n-powered automation system for a solo RevOps consultant (B2B SaaS, $10-100M A
 - **Google Docs node content bug**: n8n Google Docs node `create` operation silently drops the `content` parameter (creates empty doc). Use two HTTP Request nodes instead: (1) Drive API `POST /drive/v3/files` to create empty doc, (2) Drive API upload `PATCH /upload/drive/v3/files/{id}?uploadType=media` with `Content-Type: text/html` to write content. Both use `predefinedCredentialType: googleDocsOAuth2Api`.
 
 ## Configuration Status
-**Done:** Client Roster Sheet ID, Client Lookup Workflow ID, Claude Wrapper Workflow ID, n8n URL, Google Sheets credential, Google Drive (OneDrive fully replaced)
-**Still needs:** GEMINI_API_KEY, COST_LOG_SHEET_ID, ERRORS_SHEET_ID, CONTENT_CALENDAR_SHEET_ID, LINKEDIN_ANALYTICS_SHEET_ID, YOUR_EMAIL, LINKEDIN_PERSON_ID, RSS_FEED_URL, CONTENT_IDEAS_LIST_ID, NEWSLETTER_IDEAS_LIST_ID, SHARED_DRIVE_ID, CLIENTS_PARENT_FOLDER_ID
+**Done:** Client Roster Sheet ID, Client Lookup Workflow ID, Claude Wrapper Workflow ID, n8n URL, Google Sheets credential, Google Drive (OneDrive fully replaced), RSS_FEED_URL (`https://revopsinflection.substack.com/feed`)
+**Still needs:** GEMINI_API_KEY, COST_LOG_SHEET_ID, ERRORS_SHEET_ID, CONTENT_CALENDAR_SHEET_ID, LINKEDIN_ANALYTICS_SHEET_ID, YOUR_EMAIL, LINKEDIN_PERSON_ID, CONTENT_IDEAS_LIST_ID, NEWSLETTER_IDEAS_LIST_ID, SHARED_DRIVE_ID, CLIENTS_PARENT_FOLDER_ID
 Search for `CONFIGURE_ME` in workflow JSONs to find all placeholders.
 
 ## Known Issues
@@ -97,3 +100,17 @@ Search for `CONFIGURE_ME` in workflow JSONs to find all placeholders.
 - Filenames follow retrieval-optimized methodology (see `docs/filename-generation-keyword-extraction-retrieval-optimization.md`)
 - Prefixes: `PROMPT_` for prompt templates, `TECHNICAL_` for setup/architecture, `PERSONA_` for voice/tone, `SCHEMA_` for structured indexes
 - Per-workflow companion docs live in `docs/workflows/`
+
+### n8n Oracle CLoud Server facts (confirmed):
+
+Oracle Cloud Ubuntu server, SSH as ubuntu user
+n8n runs in Docker container (image: n8nio/n8n:latest, container name: n8n)
+Data volume: /home/ubuntu/.n8n on host → /home/node/.n8n in container
+Restart policy: unless-stopped
+Step 1 — Recreate the Docker container with the correct env vars
+Context discovered:
+
+n8n runs in Docker container named n8n (image: n8nio/n8n:latest)
+Data volume: /home/ubuntu/.n8n on host → /home/node/.n8n in container (safe — persists)
+Restart policy: unless-stopped (Docker auto-restarts it)
+No docker-compose.yml — was started with a bare docker run
