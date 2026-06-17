@@ -1,10 +1,12 @@
 # calendar-sync — Workflow Companion Doc
 
+> **ARCHIVED 2026-05-13** — Replaced by `calendar-sync-unified`. See [calendar-sync-unified.md](calendar-sync-unified.md). Do not re-activate this workflow.
+
 ## Metadata
 | Field | Value |
 |-------|-------|
-| **n8n ID** | `Xe4FrbXLSfHoGuWb` |
-| **Status** | Active — Blackthorn configured |
+| **n8n ID** | `Xe4FrbXLSfHoGuWb` (now used by calendar-sync-unified) |
+| **Status** | ~~Active~~ → **Inactive/Archived** |
 | **Phase** | Shared — Utility |
 | **Model** | None (no AI) |
 | **Prompt File** | N/A |

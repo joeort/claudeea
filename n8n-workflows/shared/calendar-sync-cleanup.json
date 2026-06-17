@@ -1,0 +1,275 @@
+{
+  "name": "calendar-sync-cleanup",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [160, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/joe%40revopsinflection.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "timeMin", "value": "={{ $now.minus({ days: 90 }).toISO() }}" },
+            { "name": "timeMax", "value": "={{ $now.plus({ days: 90 }).toISO() }}" },
+            { "name": "singleEvents", "value": "true" },
+            { "name": "maxResults", "value": "2500" },
+            { "name": "showDeleted", "value": "false" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-revops",
+      "name": "Fetch RevOps Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 400],
+      "credentials": {
+        "googleCalendarOAuth2Api": { "id": "dZ2lCgJhToJOSI7t", "name": "RevOps Calendar - joe@revopsinflection.com" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect RevOps events into single item, then pass through\nconst data = $input.first().json;\nconst events = data.items || [];\nreturn [{ json: { calendarLabel: 'revops', events } }];",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "agg-revops",
+      "name": "Agg RevOps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "timeMin", "value": "={{ $now.minus({ days: 90 }).toISO() }}" },
+            { "name": "timeMax", "value": "={{ $now.plus({ days: 90 }).toISO() }}" },
+            { "name": "singleEvents", "value": "true" },
+            { "name": "maxResults", "value": "2500" },
+            { "name": "showDeleted", "value": "false" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-blackthorn",
+      "name": "Fetch Blackthorn Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 400],
+      "credentials": {
+        "googleCalendarOAuth2Api": { "id": "xhKqi8iJDl6w5bh6", "name": "Blackthorn Calendar account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect Blackthorn events into single item\nconst data = $input.first().json;\nconst events = data.items || [];\nreturn [{ json: { calendarLabel: 'blackthorn', events } }];",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "agg-blackthorn",
+      "name": "Agg Blackthorn",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/jort%40icebergops.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "timeMin", "value": "={{ $now.minus({ days: 90 }).toISO() }}" },
+            { "name": "timeMax", "value": "={{ $now.plus({ days: 90 }).toISO() }}" },
+            { "name": "singleEvents", "value": "true" },
+            { "name": "maxResults", "value": "2500" },
+            { "name": "showDeleted", "value": "false" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-iceberg",
+      "name": "Fetch Iceberg Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1280, 400],
+      "credentials": {
+        "googleCalendarOAuth2Api": { "id": "mNQ6oDJf55C2j6vl", "name": "Iceberg Calendar - jort@icebergops.com" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nuclear cleanup: catches BOTH tagged (by extendedProperties) AND untagged sync artifacts\nconst icebergData = $input.first().json;\nconst icebergEvents = icebergData.items || [];\n\nconst revopsEvents = ($('Agg RevOps').first().json.events || []);\nconst blackthornEvents = ($('Agg Blackthorn').first().json.events || []);\n\nconst ALL_SYNC_TAGS = ['n8n-calendar-sync', 'n8n-calendar-sync-iceberg'];\n\nfunction getSyncSource(e) {\n  return e.extendedProperties?.private?.syncSource || null;\n}\nfunction isTagged(e) {\n  const src = getSyncSource(e);\n  return src && ALL_SYNC_TAGS.includes(src);\n}\nfunction summaryIs(e, val) {\n  return (e.summary || '').trim() === val;\n}\nfunction summaryStartsWith(e, prefix) {\n  return (e.summary || '').startsWith(prefix);\n}\n\nconst seen = new Set();\nfunction addDelete(calendarId, credential, e, reason) {\n  if (seen.has(e.id)) return;\n  seen.add(e.id);\n  deleteActions.push({ calendarId, credential, eventId: e.id, summary: e.summary || '(no title)', reason });\n}\n\nconst deleteActions = [];\n\n// RevOps: delete all tagged events + any [Blackthorn] or [Iceberg] prefixed events\nfor (const e of revopsEvents) {\n  if (isTagged(e)) { addDelete('joe%40revopsinflection.com', 'revops', e, 'tagged'); continue; }\n  if (summaryStartsWith(e, '[Blackthorn] ') || summaryStartsWith(e, '[Iceberg] ')) {\n    addDelete('joe%40revopsinflection.com', 'revops', e, 'untagged-prefix');\n  }\n  // Also catch [Blocked] Busy on RevOps (should never exist there)\n  if (summaryIs(e, '[Blocked] Busy')) {\n    addDelete('joe%40revopsinflection.com', 'revops', e, 'blocked-on-revops');\n  }\n}\n\n// Blackthorn: delete all tagged events + any [Blocked] Busy (catches untagged blocks)\nfor (const e of blackthornEvents) {\n  if (isTagged(e)) { addDelete('primary', 'blackthorn', e, 'tagged'); continue; }\n  if (summaryIs(e, '[Blocked] Busy')) {\n    addDelete('primary', 'blackthorn', e, 'untagged-blocked');\n  }\n}\n\n// Iceberg: delete all tagged events + any [Blocked] Busy (catches untagged blocks)\nfor (const e of icebergEvents) {\n  if (isTagged(e)) { addDelete('jort%40icebergops.com', 'iceberg', e, 'tagged'); continue; }\n  if (summaryIs(e, '[Blocked] Busy')) {\n    addDelete('jort%40icebergops.com', 'iceberg', e, 'untagged-blocked');\n  }\n}\n\nconsole.log('RevOps to delete: ' + deleteActions.filter(a => a.credential === 'revops').length);\nconsole.log('Blackthorn to delete: ' + deleteActions.filter(a => a.credential === 'blackthorn').length);\nconsole.log('Iceberg to delete: ' + deleteActions.filter(a => a.credential === 'iceberg').length);\nconsole.log('Total to delete: ' + deleteActions.length);\n\nif (deleteActions.length === 0) {\n  return [{ json: { calendarId: 'none', credential: 'none', eventId: 'none', summary: 'No synced events found — already clean', reason: '' } }];\n}\n\nreturn deleteActions.map(a => ({ json: { ...a, url: 'https://www.googleapis.com/calendar/v3/calendars/' + a.calendarId + '/events/' + a.eventId + '?sendUpdates=none' } }));",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "build-delete-list",
+      "name": "Build Delete List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 400],
+      "notes": "Filters all 3 calendars for synced events and outputs one delete action per event."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{ $json.calendarId }}", "operation": "notEqual", "value2": "none" }
+          ]
+        }
+      },
+      "id": "has-events",
+      "name": "Has Events?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1720, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{ $json.credential }}", "operation": "equal", "value2": "revops" }
+          ]
+        }
+      },
+      "id": "route-revops",
+      "name": "Is RevOps?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1940, 300]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {
+          "response": { "response": { "neverError": true } },
+          "batching": { "batch": { "batchSize": 3, "batchInterval": 1000 } }
+        }
+      },
+      "id": "delete-revops",
+      "name": "Delete RevOps",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2160, 180],
+      "credentials": {
+        "googleCalendarOAuth2Api": { "id": "dZ2lCgJhToJOSI7t", "name": "RevOps Calendar - joe@revopsinflection.com" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{ $json.credential }}", "operation": "equal", "value2": "blackthorn" }
+          ]
+        }
+      },
+      "id": "route-blackthorn",
+      "name": "Is Blackthorn?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2160, 420]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {
+          "response": { "response": { "neverError": true } },
+          "batching": { "batch": { "batchSize": 3, "batchInterval": 1000 } }
+        }
+      },
+      "id": "delete-blackthorn",
+      "name": "Delete Blackthorn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2380, 300],
+      "credentials": {
+        "googleCalendarOAuth2Api": { "id": "xhKqi8iJDl6w5bh6", "name": "Blackthorn Calendar account" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {
+          "response": { "response": { "neverError": true } },
+          "batching": { "batch": { "batchSize": 3, "batchInterval": 1000 } }
+        }
+      },
+      "id": "delete-iceberg",
+      "name": "Delete Iceberg",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2380, 540],
+      "credentials": {
+        "googleCalendarOAuth2Api": { "id": "mNQ6oDJf55C2j6vl", "name": "Iceberg Calendar - jort@icebergops.com" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst total = items.length;\nconst errors = items.filter(i => i.json.statusCode && i.json.statusCode >= 400).length;\nreturn [{ json: { status: 'cleanup complete', totalDeleted: total - errors, errors, timestamp: new Date().toISOString() } }];",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2600, 360]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Fetch RevOps Events", "type": "main", "index": 0 }]] },
+    "Fetch RevOps Events": { "main": [[{ "node": "Agg RevOps", "type": "main", "index": 0 }]] },
+    "Agg RevOps": { "main": [[{ "node": "Fetch Blackthorn Events", "type": "main", "index": 0 }]] },
+    "Fetch Blackthorn Events": { "main": [[{ "node": "Agg Blackthorn", "type": "main", "index": 0 }]] },
+    "Agg Blackthorn": { "main": [[{ "node": "Fetch Iceberg Events", "type": "main", "index": 0 }]] },
+    "Fetch Iceberg Events": { "main": [[{ "node": "Build Delete List", "type": "main", "index": 0 }]] },
+    "Build Delete List": { "main": [[{ "node": "Has Events?", "type": "main", "index": 0 }]] },
+    "Has Events?": {
+      "main": [
+        [{ "node": "Is RevOps?", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Is RevOps?": {
+      "main": [
+        [{ "node": "Delete RevOps", "type": "main", "index": 0 }],
+        [{ "node": "Is Blackthorn?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Blackthorn?": {
+      "main": [
+        [{ "node": "Delete Blackthorn", "type": "main", "index": 0 }],
+        [{ "node": "Delete Iceberg", "type": "main", "index": 0 }]
+      ]
+    },
+    "Delete RevOps": { "main": [[{ "node": "Summary", "type": "main", "index": 0 }]] },
+    "Delete Blackthorn": { "main": [[{ "node": "Summary", "type": "main", "index": 0 }]] },
+    "Delete Iceberg": { "main": [[{ "node": "Summary", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

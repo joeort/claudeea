@@ -1,0 +1,381 @@
+{
+  "name": "calendar-sync-unified",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/joe%40revopsinflection.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "timeMin", "value": "={{ $now.toISO() }}" },
+            { "name": "timeMax", "value": "={{ $now.plus({ days: 30 }).toISO() }}" },
+            { "name": "singleEvents", "value": "true" },
+            { "name": "maxResults", "value": "2500" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-revops",
+      "name": "Fetch RevOps Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 400],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "dZ2lCgJhToJOSI7t",
+          "name": "RevOps Calendar - joe@revopsinflection.com"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all()[0].json;\nconst events = data.items || [];\nreturn [{ json: { events, count: events.length } }];"
+      },
+      "id": "agg-revops",
+      "name": "Agg RevOps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/joe.ort-contractor%40blackthorn.io/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "timeMin", "value": "={{ $now.toISO() }}" },
+            { "name": "timeMax", "value": "={{ $now.plus({ days: 30 }).toISO() }}" },
+            { "name": "singleEvents", "value": "true" },
+            { "name": "maxResults", "value": "2500" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-blackthorn",
+      "name": "Fetch Blackthorn Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 400],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "xhKqi8iJDl6w5bh6",
+          "name": "Blackthorn Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all()[0].json;\nconst events = data.items || [];\nreturn [{ json: { events, count: events.length } }];"
+      },
+      "id": "agg-blackthorn",
+      "name": "Agg Blackthorn",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/jort%40icebergops.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "timeMin", "value": "={{ $now.toISO() }}" },
+            { "name": "timeMax", "value": "={{ $now.plus({ days: 30 }).toISO() }}" },
+            { "name": "singleEvents", "value": "true" },
+            { "name": "maxResults", "value": "2500" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-iceberg",
+      "name": "Fetch Iceberg Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 400],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "mNQ6oDJf55C2j6vl",
+          "name": "Iceberg Calendar - jort@icebergops.com"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all()[0].json;\nconst events = data.items || [];\nreturn [{ json: { events, count: events.length } }];"
+      },
+      "id": "agg-iceberg",
+      "name": "Agg Iceberg",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1380, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const SYNC_TAG_BT = 'n8n-calendar-sync';\nconst SYNC_TAG_ICE = 'n8n-calendar-sync-iceberg';\nconst REVOPS_CAL = 'joe%40revopsinflection.com';\nconst BT_CAL = 'joe.ort-contractor%40blackthorn.io';\nconst ICE_CAL = 'jort%40icebergops.com';\nconst REVOPS_EMAIL = 'joe@revopsinflection.com';\nconst BT_EMAIL = 'joe.ort-contractor@blackthorn.io';\nconst ICE_EMAIL = 'jort@icebergops.com';\n\nconst revopsEvents = $('Agg RevOps').first().json.events || [];\nconst btEvents = $('Agg Blackthorn').first().json.events || [];\nconst iceEvents = $('Agg Iceberg').first().json.events || [];\n\nconst revopsReal = revopsEvents.filter(e =>\n  e.extendedProperties?.private?.syncSource !== SYNC_TAG_BT &&\n  e.extendedProperties?.private?.syncSource !== SYNC_TAG_ICE\n);\nconst btReal = btEvents.filter(e => e.extendedProperties?.private?.syncSource !== SYNC_TAG_BT);\nconst iceReal = iceEvents.filter(e => e.extendedProperties?.private?.syncSource !== SYNC_TAG_ICE);\n\nconst btSynced = btEvents.filter(e => e.extendedProperties?.private?.syncSource === SYNC_TAG_BT);\nconst iceSynced = iceEvents.filter(e => e.extendedProperties?.private?.syncSource === SYNC_TAG_ICE);\nconst revopsBtSynced = revopsEvents.filter(e => e.extendedProperties?.private?.syncSource === SYNC_TAG_BT);\nconst revopsIceSynced = revopsEvents.filter(e => e.extendedProperties?.private?.syncSource === SYNC_TAG_ICE);\n\nfunction buildMap(events, actions, calId, cred) {\n  const map = new Map();\n  for (const e of events) {\n    const srcId = e.extendedProperties?.private?.syncSourceId;\n    if (!srcId) continue;\n    if (map.has(srcId)) {\n      const prev = map.get(srcId);\n      const keepNew = new Date(e.updated || 0) >= new Date(prev.updated || 0);\n      const toDelete = keepNew ? prev : e;\n      if (keepNew) map.set(srcId, e);\n      actions.push({ calId, cred, method: 'DELETE', eventId: toDelete.id, body: null });\n    } else {\n      map.set(srcId, e);\n    }\n  }\n  return map;\n}\n\nfunction getAttendees(e) {\n  return (e.attendees || []).map(a => (a.email || '').toLowerCase());\n}\n\n// Normalize to UTC for timezone-safe time comparison\nfunction toUTC(dt) {\n  return dt ? new Date(dt).toISOString() : '';\n}\nfunction timeKey(e) {\n  return toUTC(e.start?.dateTime) + '|' + toUTC(e.end?.dateTime);\n}\n\n// Build busy-time sets for each calendar's real events (for overlap skip check)\nconst btBusyTimes = new Set(btReal.filter(e => e.start?.dateTime).map(timeKey));\nconst iceBusyTimes = new Set(iceReal.filter(e => e.start?.dateTime).map(timeKey));\n\nconst actions = [];\nconst btMap = buildMap(btSynced, actions, BT_CAL, 'blackthorn');\nconst iceMap = buildMap(iceSynced, actions, ICE_CAL, 'iceberg');\nconst revopsBtMap = buildMap(revopsBtSynced, actions, REVOPS_CAL, 'revops');\nconst revopsIceMap = buildMap(revopsIceSynced, actions, REVOPS_CAL, 'revops');\n\n// 1. RevOps real -> Blackthorn [Blocked] Busy\nfor (const e of revopsReal) {\n  if (!e.start?.dateTime || e.status === 'cancelled') continue;\n  if (getAttendees(e).includes(BT_EMAIL)) { btMap.delete(e.id); continue; }\n  // Skip if BT already has a real event at this exact time (let orphan cleanup remove any stale block)\n  if (btBusyTimes.has(timeKey(e))) continue;\n  const existing = btMap.get(e.id);\n  if (existing) {\n    if (existing.start?.dateTime !== e.start?.dateTime || existing.end?.dateTime !== e.end?.dateTime) {\n      actions.push({ calId: BT_CAL, cred: 'blackthorn', method: 'PATCH', eventId: existing.id,\n        body: { start: e.start, end: e.end, reminders: { useDefault: false, overrides: [] } } });\n    }\n    btMap.delete(e.id);\n  } else {\n    actions.push({ calId: BT_CAL, cred: 'blackthorn', method: 'POST',\n      body: { summary: '[Blocked] Busy', start: e.start, end: e.end,\n        transparency: 'opaque', visibility: 'private',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG_BT, syncSourceId: e.id } } } });\n  }\n}\n\n// 2. RevOps real -> Iceberg [Blocked] Busy\nfor (const e of revopsReal) {\n  if (!e.start?.dateTime || e.status === 'cancelled') continue;\n  if (getAttendees(e).includes(ICE_EMAIL)) { iceMap.delete(e.id); continue; }\n  // Skip if Iceberg already has a real event at this exact time\n  if (iceBusyTimes.has(timeKey(e))) continue;\n  const existing = iceMap.get(e.id);\n  if (existing) {\n    if (existing.start?.dateTime !== e.start?.dateTime || existing.end?.dateTime !== e.end?.dateTime) {\n      actions.push({ calId: ICE_CAL, cred: 'iceberg', method: 'PATCH', eventId: existing.id,\n        body: { start: e.start, end: e.end, reminders: { useDefault: false, overrides: [] } } });\n    }\n    iceMap.delete(e.id);\n  } else {\n    actions.push({ calId: ICE_CAL, cred: 'iceberg', method: 'POST',\n      body: { summary: '[Blocked] Busy', start: e.start, end: e.end,\n        transparency: 'opaque', visibility: 'private',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG_ICE, syncSourceId: e.id } } } });\n  }\n}\n\n// 3. Blackthorn real -> RevOps [Blackthorn] EventName\nfor (const e of btReal) {\n  if (!e.start?.dateTime || e.status === 'cancelled') continue;\n  if (getAttendees(e).includes(REVOPS_EMAIL)) { revopsBtMap.delete(e.id); continue; }\n  const expectedSummary = '[Blackthorn] ' + (e.summary || 'Untitled');\n  const existing = revopsBtMap.get(e.id);\n  if (existing) {\n    if (existing.start?.dateTime !== e.start?.dateTime || existing.end?.dateTime !== e.end?.dateTime || existing.summary !== expectedSummary) {\n      actions.push({ calId: REVOPS_CAL, cred: 'revops', method: 'PATCH', eventId: existing.id,\n        body: { summary: expectedSummary, start: e.start, end: e.end, reminders: { useDefault: false, overrides: [] } } });\n    }\n    revopsBtMap.delete(e.id);\n  } else {\n    actions.push({ calId: REVOPS_CAL, cred: 'revops', method: 'POST',\n      body: { summary: expectedSummary, start: e.start, end: e.end, transparency: 'opaque',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG_BT, syncSourceId: e.id } } } });\n  }\n}\n\n// 4. Blackthorn real -> Iceberg [Blocked] Busy\nfor (const e of btReal) {\n  if (!e.start?.dateTime || e.status === 'cancelled') continue;\n  if (getAttendees(e).includes(ICE_EMAIL)) { iceMap.delete(e.id); continue; }\n  // Skip if Iceberg already has a real event at this exact time\n  if (iceBusyTimes.has(timeKey(e))) continue;\n  const existing = iceMap.get(e.id);\n  if (existing) {\n    if (existing.start?.dateTime !== e.start?.dateTime || existing.end?.dateTime !== e.end?.dateTime) {\n      actions.push({ calId: ICE_CAL, cred: 'iceberg', method: 'PATCH', eventId: existing.id,\n        body: { start: e.start, end: e.end, reminders: { useDefault: false, overrides: [] } } });\n    }\n    iceMap.delete(e.id);\n  } else {\n    actions.push({ calId: ICE_CAL, cred: 'iceberg', method: 'POST',\n      body: { summary: '[Blocked] Busy', start: e.start, end: e.end,\n        transparency: 'opaque', visibility: 'private',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG_ICE, syncSourceId: e.id } } } });\n  }\n}\n\n// 5. Iceberg real -> RevOps [Iceberg] EventName\nfor (const e of iceReal) {\n  if (!e.start?.dateTime || e.status === 'cancelled') continue;\n  if (getAttendees(e).includes(REVOPS_EMAIL)) { revopsIceMap.delete(e.id); continue; }\n  const expectedSummary = '[Iceberg] ' + (e.summary || 'Untitled');\n  const existing = revopsIceMap.get(e.id);\n  if (existing) {\n    if (existing.start?.dateTime !== e.start?.dateTime || existing.end?.dateTime !== e.end?.dateTime || existing.summary !== expectedSummary) {\n      actions.push({ calId: REVOPS_CAL, cred: 'revops', method: 'PATCH', eventId: existing.id,\n        body: { summary: expectedSummary, start: e.start, end: e.end, reminders: { useDefault: false, overrides: [] } } });\n    }\n    revopsIceMap.delete(e.id);\n  } else {\n    actions.push({ calId: REVOPS_CAL, cred: 'revops', method: 'POST',\n      body: { summary: expectedSummary, start: e.start, end: e.end, transparency: 'opaque',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG_ICE, syncSourceId: e.id } } } });\n  }\n}\n\n// 6. Iceberg real -> Blackthorn [Blocked] Busy\nfor (const e of iceReal) {\n  if (!e.start?.dateTime || e.status === 'cancelled') continue;\n  if (getAttendees(e).includes(BT_EMAIL)) { btMap.delete(e.id); continue; }\n  // Skip if BT already has a real event at this exact time\n  if (btBusyTimes.has(timeKey(e))) continue;\n  const existing = btMap.get(e.id);\n  if (existing) {\n    if (existing.start?.dateTime !== e.start?.dateTime || existing.end?.dateTime !== e.end?.dateTime) {\n      actions.push({ calId: BT_CAL, cred: 'blackthorn', method: 'PATCH', eventId: existing.id,\n        body: { start: e.start, end: e.end, reminders: { useDefault: false, overrides: [] } } });\n    }\n    btMap.delete(e.id);\n  } else {\n    actions.push({ calId: BT_CAL, cred: 'blackthorn', method: 'POST',\n      body: { summary: '[Blocked] Busy', start: e.start, end: e.end,\n        transparency: 'opaque', visibility: 'private',\n        reminders: { useDefault: false, overrides: [] },\n        extendedProperties: { private: { syncSource: SYNC_TAG_BT, syncSourceId: e.id } } } });\n  }\n}\n\n// 7. Orphan cleanup — delete remaining map entries (source event no longer exists)\nfor (const [, e] of btMap) {\n  actions.push({ calId: BT_CAL, cred: 'blackthorn', method: 'DELETE', eventId: e.id, body: null });\n}\nfor (const [, e] of iceMap) {\n  actions.push({ calId: ICE_CAL, cred: 'iceberg', method: 'DELETE', eventId: e.id, body: null });\n}\nfor (const [, e] of revopsBtMap) {\n  actions.push({ calId: REVOPS_CAL, cred: 'revops', method: 'DELETE', eventId: e.id, body: null });\n}\nfor (const [, e] of revopsIceMap) {\n  actions.push({ calId: REVOPS_CAL, cred: 'revops', method: 'DELETE', eventId: e.id, body: null });\n}\n\nif (actions.length === 0) {\n  return [{ json: { credential: 'none', method: 'NONE', url: '', body: '{}', stats: 'No sync actions needed' } }];\n}\n\n// Dedup ALL POST actions by [calId, start, end, summary] — covers both [Blocked] Busy blocks\n// and named events like [Blackthorn] X, preventing ghost recurring instance duplicates\nconst seenPosts = new Set();\nconst dedupedActions = [];\nfor (const a of actions) {\n  if (a.method === 'POST' && a.body) {\n    const key = a.calId + '|' + toUTC(a.body.start?.dateTime) + '|' + toUTC(a.body.end?.dateTime) + '|' + (a.body.summary || '');\n    if (seenPosts.has(key)) continue;\n    seenPosts.add(key);\n  }\n  dedupedActions.push(a);\n}\n\nconst BASE = 'https://www.googleapis.com/calendar/v3/calendars/';\nreturn dedupedActions.map(a => ({\n  json: {\n    credential: a.cred,\n    method: a.method,\n    url: BASE + a.calId + '/events' + (a.eventId ? '/' + a.eventId : '') + '?sendUpdates=none',\n    body: a.body ? JSON.stringify(a.body) : '{}'\n  }\n}));",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "compute-all-diffs",
+      "name": "Compute All Diffs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 400],
+      "notes": "Unified 3-calendar diff. Classifies events by sync tag, builds 4 dedup maps, computes 6 sync directions, outputs one action per item. No encodeURIComponent — calendar IDs use literal %40."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.credential }}",
+              "operation": "equal",
+              "value2": "none"
+            }
+          ]
+        }
+      },
+      "id": "has-actions",
+      "name": "Has Actions?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1800, 400],
+      "notes": "TRUE = no actions needed (credential === 'none') → skip to Log Summary. FALSE = has actions → route to write nodes."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.credential }}",
+              "operation": "equal",
+              "value2": "revops"
+            }
+          ]
+        }
+      },
+      "id": "route-by-credential",
+      "name": "Route by Credential",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2020, 520],
+      "notes": "TRUE = write to RevOps. FALSE = check if Blackthorn."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.credential }}",
+              "operation": "equal",
+              "value2": "blackthorn"
+            }
+          ]
+        }
+      },
+      "id": "route-blackthorn",
+      "name": "Route Blackthorn",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2240, 632],
+      "notes": "TRUE = write to Blackthorn. FALSE = write to Iceberg."
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "write-revops",
+      "name": "Write to RevOps Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 400],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "dZ2lCgJhToJOSI7t",
+          "name": "RevOps Calendar - joe@revopsinflection.com"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "write-blackthorn",
+      "name": "Write to Blackthorn Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2460, 520],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "xhKqi8iJDl6w5bh6",
+          "name": "Blackthorn Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "write-iceberg",
+      "name": "Write to Iceberg Calendar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2460, 744],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "mNQ6oDJf55C2j6vl",
+          "name": "Iceberg Calendar - jort@icebergops.com"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst timestamp = new Date().toISOString();\nconst total = items.length;\nconst errors = items.filter(i => i.json.error || (i.json.statusCode && i.json.statusCode >= 400)).length;\nconst noAction = items.some(i => i.json.stats === 'No sync actions needed');\nreturn [{ json: { status: 'complete', timestamp, totalActions: noAction ? 0 : total, errors } }];"
+      },
+      "id": "log-summary",
+      "name": "Log Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2680, 400]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [[{ "node": "Fetch RevOps Events", "type": "main", "index": 0 }]]
+    },
+    "Fetch RevOps Events": {
+      "main": [[{ "node": "Agg RevOps", "type": "main", "index": 0 }]]
+    },
+    "Agg RevOps": {
+      "main": [[{ "node": "Fetch Blackthorn Events", "type": "main", "index": 0 }]]
+    },
+    "Fetch Blackthorn Events": {
+      "main": [[{ "node": "Agg Blackthorn", "type": "main", "index": 0 }]]
+    },
+    "Agg Blackthorn": {
+      "main": [[{ "node": "Fetch Iceberg Events", "type": "main", "index": 0 }]]
+    },
+    "Fetch Iceberg Events": {
+      "main": [[{ "node": "Agg Iceberg", "type": "main", "index": 0 }]]
+    },
+    "Agg Iceberg": {
+      "main": [[{ "node": "Compute All Diffs", "type": "main", "index": 0 }]]
+    },
+    "Compute All Diffs": {
+      "main": [[{ "node": "Has Actions?", "type": "main", "index": 0 }]]
+    },
+    "Has Actions?": {
+      "main": [
+        [{ "node": "Log Summary", "type": "main", "index": 0 }],
+        [{ "node": "Route by Credential", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route by Credential": {
+      "main": [
+        [{ "node": "Write to RevOps Calendar", "type": "main", "index": 0 }],
+        [{ "node": "Route Blackthorn", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route Blackthorn": {
+      "main": [
+        [{ "node": "Write to Blackthorn Calendar", "type": "main", "index": 0 }],
+        [{ "node": "Write to Iceberg Calendar", "type": "main", "index": 0 }]
+      ]
+    },
+    "Write to RevOps Calendar": {
+      "main": [[{ "node": "Log Summary", "type": "main", "index": 0 }]]
+    },
+    "Write to Blackthorn Calendar": {
+      "main": [[{ "node": "Log Summary", "type": "main", "index": 0 }]]
+    },
+    "Write to Iceberg Calendar": {
+      "main": [[{ "node": "Log Summary", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

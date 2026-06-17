@@ -69,7 +69,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Find posts in RSS that don't exist in the repo yet\nconst rssItems = $('Parse RSS Items').first().json.items;\nconst repoFiles = $input.first().json; // array of GitHub file objects\n\n// Extract slugs from repo filenames (format: YYYY-MM-DD-{slug}.md)\nconst existingSlugs = new Set(\n  repoFiles\n    .filter(f => f.name.endsWith('.md') && f.name !== 'INDEX.md')\n    .map(f => f.name.replace(/^\\d{4}-\\d{2}-\\d{2}-/, '').replace(/\\.md$/, ''))\n);\n\nconst newPosts = rssItems.filter(item => !existingSlugs.has(item.slug));\n\nconsole.log(`RSS items: ${rssItems.length}, existing in repo: ${existingSlugs.size}, new: ${newPosts.length}`);\n\nif (newPosts.length === 0) return [{ json: { newPosts: [], hasNew: false } }];\nreturn [{ json: { newPosts, hasNew: true } }];"
+        "jsCode": "// Find posts in RSS that don't exist in the repo yet\nconst rssItems = $('Parse RSS Items').first().json.items;\nconst repoFiles = $input.all().map(item => item.json); // each file is a separate n8n item\n\n// Extract slugs from repo filenames (format: YYYY-MM-DD-{slug}.md)\nconst existingSlugs = new Set(\n  repoFiles\n    .filter(f => f.name.endsWith('.md') && f.name !== 'INDEX.md')\n    .map(f => f.name.replace(/^\\d{4}-\\d{2}-\\d{2}-/, '').replace(/\\.md$/, ''))\n);\n\nconst newPosts = rssItems.filter(item => !existingSlugs.has(item.slug));\n\nconsole.log(`RSS items: ${rssItems.length}, existing in repo: ${existingSlugs.size}, new: ${newPosts.length}`);\n\nif (newPosts.length === 0) return [{ json: { newPosts: [], hasNew: false } }];\nreturn [{ json: { newPosts, hasNew: true } }];"
       },
       "id": "find-new-posts",
       "name": "Find New Posts",

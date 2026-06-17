@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:docs.n8n.io)",
+      "Bash(npx:*)",
+      "Bash(curl:*)",
+      "Bash(head:*)",
+      "Bash(python:*)",
+      "WebFetch(domain:docs.google.com)",
+      "Bash(export:*)",
+      "Bash(echo:*)",
+      "Bash(echo Fetch failed - may be empty repo:*)",
+      "Bash(git add CLAUDE.md README.md docs/SCHEMA_project-index-workflow-registry-file-inventory-configuration-status.md docs/TECHNICAL_architecture-decisions-n8n-gemini-claude-google-sheets-clickup-patterns.md docs/TECHNICAL_n8n-integration-patterns-clickup-api-google-sheets-code-node-workarounds.md docs/workflows/ n8n-workflows/shared/calendar-sync.json)",
+      "Bash(git commit:*)",
+      "mcp__n8n-mcp__n8n_executions"
     ]
   }
 }
